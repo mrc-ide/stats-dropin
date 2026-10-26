@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Likelihood Lab</title>
+<style>
+/* Layout: one model (a single prevalence survey: x positive out of N) and four tabs that tell one story:
+   A model to data, B data to likelihood, C how far the estimate lands from the truth, D choose the interval.
+   Each tab is controls beside charts, chart-first on phones. Palette follows the printed worksheets. */
+:root {
+  --bg: #F6F8FB;
+  --panel: #FFFFFF;
+  --soft: #EAF1F8;
+  --fg: #1B2533;
+  --muted: #5A6878;
+  --line: #D5DEE9;
+  --ink: #1F3A5F;
+  --accent: #2F6BB0;
+  --bar: #A9C0DA;
+  --hit: #D9822B;
+  --keep: #2E7D32;
+  --miss: #B23A2B;
+  --font-body: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+    --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+  --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); color: var(--ink); line-height: 1.15; }
+.story { margin: 0; font-size: 15px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; max-width: 80ch; }
+.story b { color: var(--ink); }
+
+nav.steps { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+nav.steps button {
+  font: inherit; font-weight: 600; font-size: 15px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  padding: 10px 12px; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+nav.steps button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.steps .num { font-family: var(--font-num); font-size: 13px; margin-right: 6px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 780px) { .bench { grid-template-columns: minmax(0, 1fr); } .stage { order: -1; } }
+.controls { display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.controls h2 { margin: 0; font-size: 18px; color: var(--ink); }
+.controls p { margin: 0; font-size: 14.5px; color: var(--muted); }
+.controls p b { color: var(--fg); }
+.field { display: grid; gap: 4px; }
+.field > label, .field > .lab { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.field output { font-family: var(--font-num); font-weight: 600; color: var(--accent); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="number"] {
+  font: inherit; font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); width: 100%;
+}
+.sn { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 10px; align-items: center; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14.5px; }
+.inline input[type="number"] { width: 80px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button.act {
+  font: inherit; font-size: 14.5px; font-weight: 600; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--panel);
+}
+button.act.ghost { background: transparent; color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; }
+.seg button { font: inherit; font-size: 14px; font-weight: 600; padding: 6px 12px; border: 0; background: transparent; color: var(--accent); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14.5px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.radio { display: grid; gap: 6px; font-size: 14.5px; }
+.radio label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.radio input { margin-top: 4px; accent-color: var(--accent); }
+.err { color: var(--miss); font-size: 13.5px; }
+.divider { border-top: 1px solid var(--line); }
+
+.stage { display: grid; gap: 12px; min-width: 0; }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 6px; display: grid; gap: 4px; min-width: 0; }
+.chart h3 { margin: 0 4px; font-size: 14px; color: var(--ink); }
+canvas { display: block; width: 100%; height: 300px; }
+canvas.small { height: 200px; }
+#d-canvas { touch-action: none; cursor: ns-resize; }
+@media (max-width: 780px) { canvas { height: 250px; } canvas.small { height: 180px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); padding: 0 4px; }
+.sw { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; }
+.sw.ln { height: 3px; vertical-align: 3px; }
+.sw.dot { width: 10px; border-radius: 50%; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat { background: var(--soft); border-radius: 8px; padding: 9px 12px; display: grid; gap: 1px; min-width: 0; }
+.stat .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { font-family: var(--font-num); font-size: 19px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat.big .v { color: var(--keep); }
+.note { font-size: 14.5px; background: var(--panel); border-left: 3px solid var(--hit); padding: 10px 14px; border-radius: 0 8px 8px 0; }
+.note b { color: var(--ink); }
+
+.tablewrap { max-height: 260px; overflow: auto; }
+table.data { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--line); }
+table.data th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data td { font-family: var(--font-num); }
+table.data tr.now td { color: var(--hit); font-weight: 700; }
+.empty { font-size: 14px; color: var(--muted); padding: 6px 4px; }
+footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Stats drop-in · Week 4</span>
+    <h1>Likelihood Lab</h1>
+  </header>
+  <p class="story">We test N people. Each person is positive with probability <b>p</b>, the prevalence.
+    The data are one number: <b>x</b> positive out of N tested.</p>
+
+  <nav class="steps" role="tablist" aria-label="Steps">
+    <button role="tab" id="t-A" aria-controls="p-A" aria-selected="true"><span class="num">A</span>Model → data</button>
+    <button role="tab" id="t-B" aria-controls="p-B" aria-selected="false"><span class="num">B</span>Data → likelihood</button>
+    <button role="tab" id="t-C" aria-controls="p-C" aria-selected="false"><span class="num">C</span>How far is the estimate from the truth?</button>
+    <button role="tab" id="t-D" aria-controls="p-D" aria-selected="false"><span class="num">D</span>Choose the interval</button>
+  </nav>
+
+  <!-- A. Model to data -->
+  <section class="bench" id="p-A" role="tabpanel" aria-labelledby="t-A">
+    <div class="controls">
+      <h2>Choose p, make data</h2>
+      <p>The bars show how probable each possible survey result is.</p>
+      <div class="field">
+        <label for="a-p">Prevalence p</label>
+        <div class="sn"><input type="range" id="a-p" min="0.01" max="0.99" step="0.01" value="0.3"><input type="number" id="a-p-num" min="0.01" max="0.99" step="0.01" value="0.3" aria-label="Prevalence p"></div>
+      </div>
+      <div class="field"><label for="a-n">People tested, N</label><input type="number" id="a-n" min="1" max="500" value="10"></div>
+      <div class="field">
+        <span class="lab">Look up a probability</span>
+        <div class="inline"><span>Exactly</span><input type="number" id="a-look" min="0" step="1" value="3"><span>positive:</span><b id="a-look-out" style="font-family:var(--font-num)"></b></div>
+      </div>
+      <div class="btns">
+        <button class="act" id="a-sim">Run a survey</button>
+        <button class="act ghost" id="a-clear">Clear table</button>
+      </div>
+      <div class="divider"></div>
+      <p><b>Example dataset.</b> A real survey result, made from a secret value of p.
+        Load it, then move the slider to see which values of p could have made it.</p>
+      <div class="btns"><button class="act ghost" id="a-example">Load example dataset</button></div>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>Probability of each possible survey result</h3>
+        <canvas id="a-canvas"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--bar)"></span>model: probability of each result</span>
+          <span><span class="sw" style="background:var(--hit)"></span>the data</span>
+        </div>
+      </div>
+      <div class="note" id="a-note" hidden><b>Which values of p could have made this result?</b> Move the slider.
+        A value of p is believable if the orange bar is reasonably tall, and hard to believe if it is out in the tail.
+        Find your best guess, then the lowest and highest values you'd still believe.</div>
+      <div class="chart">
+        <h3>The data: one row per survey</h3>
+        <div class="tablewrap" id="a-table"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B. Data to likelihood -->
+  <section class="bench" id="p-B" role="tabpanel" aria-labelledby="t-B" hidden>
+    <div class="controls">
+      <h2>Fix the data, vary p</h2>
+      <div class="field"><span class="lab">Data</span><div class="radio" data-src></div></div>
+      <div class="pair" data-own hidden>
+        <div class="field"><label>Positive</label><input type="number" data-own-x min="0" value="64"></div>
+        <div class="field"><label>Tested</label><input type="number" data-own-n min="1" max="2000" value="200"></div>
+      </div>
+      <div class="err" data-err hidden></div>
+      <div class="field">
+        <label for="b-cand">Candidate p (slide, or type an exact value)</label>
+        <div class="sn"><input type="range" id="b-cand" min="0.001" max="0.999" step="0.001" value="0.5"><input type="number" id="b-cand-num" min="0.001" max="0.999" step="0.01" value="0.5" aria-label="Candidate p"></div>
+      </div>
+      <div class="field">
+        <span class="lab">Vertical scale</span>
+        <div class="seg" role="group" aria-label="Vertical scale">
+          <button id="b-scale-lik" aria-pressed="true">Likelihood</button>
+          <button id="b-scale-log" aria-pressed="false">Log-likelihood</button>
+        </div>
+      </div>
+      <p>The likelihood of a candidate p is the probability of getting <b>exactly this result</b> if p were true.</p>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>Likelihood of each candidate value of p</h3>
+        <canvas id="b-canvas"></canvas>
+        <div class="legend">
+          <span><span class="sw ln" style="background:var(--ink)"></span><span id="b-curve-lab">likelihood</span></span>
+          <span><span class="sw dot" style="background:var(--hit)"></span>candidate</span>
+          <span><span class="sw ln" style="background:var(--accent)"></span>best estimate (MLE)</span>
+        </div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Candidate p</span><span class="v" id="b-r-cand">–</span></div>
+        <div class="stat"><span class="k">Likelihood</span><span class="v" id="b-r-lik">–</span></div>
+        <div class="stat"><span class="k">Log-likelihood</span><span class="v" id="b-r-log">–</span></div>
+        <div class="stat"><span class="k">Best estimate (MLE)</span><span class="v" id="b-r-mle">–</span></div>
+      </div>
+      <div class="chart">
+        <h3 id="b-mini-title">The model at this candidate</h3>
+        <canvas id="b-mini" class="small"></canvas>
+        <div class="legend"><span id="b-mini-cap"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C. How far does the estimate land from the truth? -->
+  <section class="bench" id="p-C" role="tabpanel" aria-labelledby="t-C" hidden>
+    <div class="controls">
+      <h2>Pretend we know the truth</h2>
+      <p>Set a true prevalence p₀. Each simulated study runs a survey from p₀, finds its best estimate p̂, and
+        measures how much better p̂ fits than the truth:</p>
+      <p style="font-family:var(--font-num);color:var(--fg)">S = 2 × [log L(p̂) − log L(p₀)]</p>
+      <div class="field">
+        <label for="c-p">True prevalence p₀</label>
+        <div class="sn"><input type="range" id="c-p" min="0.05" max="0.95" step="0.01" value="0.3"><input type="number" id="c-p-num" min="0.05" max="0.95" step="0.01" value="0.3" aria-label="True prevalence"></div>
+      </div>
+      <div class="field"><label for="c-n">People tested, N</label><input type="number" id="c-n" min="1" max="1000" value="500"></div>
+      <div class="btns">
+        <button class="act" id="c-1">Run 1 study</button>
+        <button class="act" id="c-100">+100</button>
+        <button class="act" id="c-1000">+1000</button>
+        <button class="act ghost" id="c-reset">Reset</button>
+      </div>
+      <label class="check"><input type="checkbox" id="c-chi" checked> Show the theory curve (chi-squared)</label>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>The last study: how far apart are p̂ and the truth?</h3>
+        <canvas id="c-mini" class="small"></canvas>
+        <div class="legend">
+          <span><span class="sw ln" style="background:var(--ink)"></span>log-likelihood for this study's data</span>
+          <span><span class="sw ln" style="background:var(--accent)"></span>p̂</span>
+          <span><span class="sw ln" style="background:var(--miss)"></span>true p₀</span>
+        </div>
+      </div>
+      <div class="chart">
+        <h3>S from every study so far</h3>
+        <canvas id="c-canvas"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--bar)"></span>S up to 3.84</span>
+          <span><span class="sw" style="background:var(--miss);opacity:.6"></span>S above 3.84</span>
+          <span id="c-chi-leg"><span class="sw ln" style="background:var(--ink)"></span>theory: chi-squared, 1 df</span>
+        </div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Studies run</span><span class="v" id="c-count">0</span></div>
+        <div class="stat"><span class="k">S above 3.84</span><span class="v" id="c-above">–</span></div>
+        <div class="stat"><span class="k">Last study</span><span class="v" id="c-last" style="font-size:14px">–</span></div>
+      </div>
+      <div class="note"><b>S above 3.84 is the same as the log-likelihood dropping more than 1.92</b> from p̂ to the truth.
+        With plenty of data it happens in about 5% of studies, whatever p₀ is. With very little data the theory curve is only a rough guide.</div>
+    </div>
+  </section>
+
+  <!-- D. Choose the interval -->
+  <section class="bench" id="p-D" role="tabpanel" aria-labelledby="t-D" hidden>
+    <div class="controls">
+      <h2>Draw a line, get an interval</h2>
+      <p>Drag the green line up and down the chart (or use the slider). Every value of p where the curve is
+        <b>above</b> the line is in the interval. The lower the line, the wider the interval, and the more often
+        it catches the truth. On the log scale the line sits a <b>drop</b> below the top; on the likelihood scale
+        it sits at a <b>% of the peak</b>.</p>
+      <div class="field"><span class="lab">Data</span><div class="radio" data-src></div></div>
+      <div class="pair" data-own hidden>
+        <div class="field"><label>Positive</label><input type="number" data-own-x min="0" value="64"></div>
+        <div class="field"><label>Tested</label><input type="number" data-own-n min="1" max="2000" value="200"></div>
+      </div>
+      <div class="err" data-err hidden></div>
+      <div class="field">
+        <label for="d-drop"><span id="d-drop-lab">Line: drop below the top</span><output id="d-drop-out"></output></label>
+        <div class="sn"><input type="range" id="d-drop" min="0" max="5" step="0.01" value="0.5"><input type="number" id="d-drop-num" min="0" max="5" step="0.01" value="0.5" aria-label="Drop below the top"></div>
+      </div>
+      <div class="field">
+        <span class="lab">Vertical scale</span>
+        <div class="seg" role="group" aria-label="Vertical scale">
+          <button id="d-scale-log" aria-pressed="true">Log-likelihood</button>
+          <button id="d-scale-lik" aria-pressed="false">Likelihood</button>
+        </div>
+      </div>
+      <label class="check" id="d-truth-row"><input type="checkbox" id="d-truth"> Reveal the true value</label>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>Drag the line to choose the interval</h3>
+        <canvas id="d-canvas"></canvas>
+        <div class="legend">
+          <span><span class="sw ln" style="background:var(--ink)"></span><span id="d-curve-lab">log-likelihood</span></span>
+          <span><span class="sw ln" style="background:var(--keep)"></span>your line</span>
+          <span><span class="sw" style="background:var(--keep);opacity:.4"></span>interval</span>
+          <span id="d-truth-leg" hidden><span class="sw ln" style="background:var(--miss)"></span>true value</span>
+        </div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k" id="d-r-drop-k">Drop below the top</span><span class="v" id="d-r-drop">–</span></div>
+        <div class="stat"><span class="k">Interval</span><span class="v" id="d-r-int">–</span></div>
+        <div class="stat big"><span class="k">Catches the truth in about</span><span class="v" id="d-r-level">–</span></div>
+      </div>
+      <div class="note" id="d-note"></div>
+    </div>
+  </section>
+
+  <footer>Likelihood = the probability of the observed result, x positive out of N, if the candidate p were true.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var CRIT = 3.841459;
+  var $ = function (id) { return document.getElementById(id); };
+  var all = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+
+  // ---------- maths ----------
+  var lf = [0];
+  function logFact(k) { for (var i = lf.length; i <= k; i++) lf[i] = lf[i - 1] + Math.log(i); return lf[k]; }
+  function xlog(a, b) { return a === 0 ? 0 : a * Math.log(b); }
+  function rbinom(n, p) { var k = 0; for (var i = 0; i < n; i++) if (Math.random() < p) k++; return k; }
+  // log-likelihood of p for data d = {x, N}: the log of dbinom(x, N, p)
+  function ll(p, d) {
+    if ((p <= 0 && d.x > 0) || (p >= 1 && d.x < d.N)) return -Infinity;
+    return logFact(d.N) - logFact(d.x) - logFact(d.N - d.x) + xlog(d.x, p) + xlog(d.N - d.x, 1 - p);
+  }
+  function mle(d) { return d.x / d.N; }
+  // every p whose log-likelihood is within `drop` of the top
+  function interval(d, drop) {
+    var m = mle(d), top = ll(m, d), eps = 1e-9;
+    if (drop <= 0) return [m, m];
+    function f(t) { return top - ll(t, d) - drop; }
+    function bis(a, b) { for (var i = 0; i < 70; i++) { var c = (a + b) / 2; if ((f(a) > 0) === (f(c) > 0)) a = c; else b = c; } return (a + b) / 2; }
+    return [f(eps) > 0 ? bis(eps, m) : 0, f(1 - eps) > 0 ? bis(m, 1 - eps) : 1];
+  }
+  function erf(z) { // Abramowitz and Stegun 7.1.26
+    var t = 1 / (1 + 0.3275911 * z);
+    return 1 - t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-z * z);
+  }
+  // share of studies whose truth lies within `drop` of the top (chi-squared, 1 df: P(S <= 2 * drop))
+  function level(drop) { return drop <= 0 ? 0 : erf(Math.sqrt(drop)); }
+
+  // The example: 16 positive out of 50, made from p = 0.3 (check_answers.R, seed 1).
+  var EXAMPLE = { d: { x: 16, N: 50 }, truth: 0.3, label: "Example" };
+
+  // ---------- formatting ----------
+  var SUP = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+  function sci(v) {
+    if (!isFinite(v)) return "–";
+    if (v === 0) return "0";
+    if (v >= 0.001 && v < 1000) return String(+v.toPrecision(3));
+    var e = Math.floor(Math.log10(v)), mant = v / Math.pow(10, e);
+    if (mant >= 9.995) { mant = 1; e++; }
+    return mant.toFixed(2) + " × 10" + String(e).split("").map(function (c) { return SUP[c]; }).join("");
+  }
+  function fx(v, d) { return isFinite(v) ? (v < 0 ? "−" : "") + Math.abs(v).toFixed(d) : "−∞"; }
+  function pct(a, b) { return b ? (100 * a / b).toFixed(1) + "%" : "–"; }
+  function niceTicks(lo, hi, n) {
+    var raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+    var st = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag, out = [];
+    for (var v = Math.ceil(lo / st) * st; v <= hi + st * 1e-9; v += st) out.push(+v.toFixed(10));
+    return out;
+  }
+  function tickLab(v) { var s = (Math.abs(v) < 0.001 && v !== 0) ? sci(Math.abs(v)) : String(+v.toFixed(6)); return (v < 0 ? "−" : "") + s; }
+
+  // ---------- canvas ----------
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function setup(cv) {
+    var r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    var c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+    return { c: c, w: r.width, h: r.height };
+  }
+  function axes(g, xlo, xhi, ylo, yhi, xlab, ylab, opt) {
+    opt = opt || {};
+    var c = g.c, m = { l: opt.left || 52, r: 14, t: 14, b: 38 }, W = g.w - m.l - m.r, H = g.h - m.t - m.b;
+    var X = function (v) { return m.l + (v - xlo) / (xhi - xlo) * W; }, Y = function (v) { return m.t + (1 - (v - ylo) / (yhi - ylo)) * H; };
+    c.font = "12px " + css("--font-body"); c.lineWidth = 1; c.strokeStyle = css("--line"); c.fillStyle = css("--muted");
+    var xt = opt.xticks || niceTicks(xlo, xhi, Math.max(3, Math.min(8, Math.floor(W / 70))));
+    c.textAlign = "center"; c.textBaseline = "top";
+    xt.forEach(function (t) { if (t < xlo - 1e-9 || t > xhi + 1e-9) return; c.beginPath(); c.moveTo(X(t), m.t); c.lineTo(X(t), m.t + H); c.stroke(); c.fillText(tickLab(t), X(t), m.t + H + 5); });
+    var yt = niceTicks(ylo, yhi, Math.max(3, Math.min(6, Math.floor(H / 40))));
+    c.textAlign = "right"; c.textBaseline = "middle";
+    yt.forEach(function (t) { c.beginPath(); c.moveTo(m.l, Y(t)); c.lineTo(m.l + W, Y(t)); c.stroke(); c.fillText(opt.ylab ? opt.ylab(t) : tickLab(t), m.l - 6, Y(t)); });
+    c.strokeStyle = css("--muted"); c.beginPath(); c.moveTo(m.l, m.t + H); c.lineTo(m.l + W, m.t + H); c.stroke();
+    c.fillStyle = css("--muted"); c.textAlign = "center"; c.textBaseline = "bottom"; c.fillText(xlab, m.l + W / 2, g.h - 1);
+    if (ylab) { c.save(); c.translate(11, m.t + H / 2); c.rotate(-Math.PI / 2); c.textBaseline = "middle"; c.fillText(ylab, 0, 0); c.restore(); }
+    return { X: X, Y: Y, m: m, W: W, H: H, ylo: ylo, yhi: yhi, clip: function () { c.save(); c.beginPath(); c.rect(m.l, m.t - 2, W, H + 2); c.clip(); } };
+  }
+  function vline(g, f, x, col, w, dash) { var c = g.c; c.strokeStyle = col; c.lineWidth = w; c.setLineDash(dash || []); c.beginPath(); c.moveTo(f.X(x), f.m.t); c.lineTo(f.X(x), f.m.t + f.H); c.stroke(); c.setLineDash([]); }
+  function hline(g, f, y, col, w) { var c = g.c; c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(f.m.l, f.Y(y)); c.lineTo(f.m.l + f.W, f.Y(y)); c.stroke(); }
+  function curve(g, f, d, xlo, xhi, logS, ylo) {
+    var c = g.c; c.strokeStyle = css("--ink"); c.lineWidth = 2.4; c.beginPath(); var on = false;
+    for (var i = 0; i <= 500; i++) {
+      var t = xlo + (xhi - xlo) * i / 500, v = ll(t, d); if (!logS) v = Math.exp(v);
+      if (!isFinite(v)) { on = false; continue; }
+      var y = f.Y(Math.max(v, ylo)); if (!on) { c.moveTo(f.X(t), y); on = true; } else c.lineTo(f.X(t), y);
+    }
+    c.stroke();
+  }
+  // likelihood or log-likelihood over p in [0, 1]; leaves the clip open for the caller
+  function likChart(cv, d, logS, xlab) {
+    var g = setup(cv), top = ll(mle(d), d), ylo, yhi;
+    if (logS) { yhi = top + Math.max(0.5, Math.abs(top) * 0.05); ylo = top - 12; } else { ylo = 0; yhi = Math.exp(top) * 1.12; }
+    var f = axes(g, 0, 1, ylo, yhi, xlab, logS ? "log-likelihood" : "likelihood", { left: logS ? 52 : 62, ylab: logS ? null : function (t) { return t === 0 ? "0" : sci(t); } });
+    f.clip(); curve(g, f, d, 0, 1, logS, ylo - 1);
+    return { g: g, f: f, top: top };
+  }
+  // probability of each x = 0..N at p, with the observed x in orange
+  function bars(cv, p, N, xObs, labelObs) {
+    var g = setup(cv), c = g.c, probs = [], pmax = 0;
+    for (var k = 0; k <= N; k++) { probs[k] = Math.exp(ll(p, { x: k, N: N })); pmax = Math.max(pmax, probs[k]); }
+    var f = axes(g, -0.5, N + 0.5, 0, pmax * 1.18, "number positive, x", "probability",
+      { xticks: niceTicks(0, N, Math.min(10, Math.max(4, Math.floor(g.w / 60)))).filter(function (t) { return t === Math.round(t); }) });
+    f.clip();
+    var bw = Math.max(1, (f.X(1) - f.X(0)) * 0.8);
+    for (k = 0; k <= N; k++) { c.fillStyle = k === xObs ? css("--hit") : css("--bar"); c.fillRect(f.X(k) - bw / 2, f.Y(probs[k]), bw, f.Y(0) - f.Y(probs[k])); }
+    if (xObs != null && xObs <= N && labelObs) {
+      c.strokeStyle = css("--hit"); c.lineWidth = 2; c.setLineDash([3, 3]);
+      c.beginPath(); c.moveTo(f.X(xObs), f.m.t + 16); c.lineTo(f.X(xObs), f.Y(probs[xObs])); c.stroke(); c.setLineDash([]);
+      c.fillStyle = css("--hit"); c.font = "600 12px " + css("--font-body"); c.textBaseline = "top";
+      c.textAlign = f.X(xObs) > f.m.l + f.W * 0.7 ? "right" : "left";
+      c.fillText(labelObs, f.X(xObs) + (c.textAlign === "right" ? -5 : 5), f.m.t + 2);
+    }
+    c.restore();
+  }
+
+  // ---------- state ----------
+  var st = {
+    p: 0.3, N: 10, surveys: [], shown: null, lastSim: null, nSurvey: 0,
+    src: "example", own: { x: 64, N: 200 }, bCand: 0.5, bScale: "lik",
+    c: { p: 0.3, N: 500, S: [], above: 0, last: null },
+    drop: 0.5, dScale: "log", showTruth: false
+  };
+  var step = "A";
+
+  // ---------- data sources shared by tabs B and D ----------
+  function sources() {
+    return [
+      { v: "example", lab: "Example dataset (16 of 50 positive)" },
+      { v: "sim", lab: st.lastSim ? "Last survey from tab A (" + st.lastSim.d.x + " of " + st.lastSim.d.N + ")" : "Last survey from tab A" },
+      { v: "own", lab: "Type your own" }
+    ];
+  }
+  function renderSources() {
+    all("[data-src]").forEach(function (box, j) {
+      box.innerHTML = sources().map(function (s) {
+        return '<label><input type="radio" name="src' + j + '" value="' + s.v + '"' + (st.src === s.v ? " checked" : "") + "><span>" + s.lab + "</span></label>";
+      }).join("");
+      box.querySelectorAll("input").forEach(function (inp) { inp.onchange = function () { st.src = inp.value; st.showTruth = false; $("d-truth").checked = false; renderSources(); redraw(); }; });
+    });
+    all("[data-own]").forEach(function (e) { e.hidden = st.src !== "own"; });
+    all("[data-own-x]").forEach(function (e) { if (document.activeElement !== e) e.value = st.own.x; });
+    all("[data-own-n]").forEach(function (e) { if (document.activeElement !== e) e.value = st.own.N; });
+  }
+  function current() {
+    all("[data-err]").forEach(function (e) { e.hidden = true; });
+    var msg = null;
+    if (st.src === "example") return EXAMPLE;
+    if (st.src === "sim") { if (st.lastSim) return st.lastSim; msg = "No survey yet. Run a survey in tab A first."; }
+    if (st.src === "own") {
+      var x = st.own.x, N = st.own.N;
+      if (N >= 1 && x >= 0 && x <= N) return { d: { x: x, N: N }, truth: null };
+      msg = "Positive must be a whole number from 0 up to the number tested.";
+    }
+    all("[data-err]").forEach(function (e) { e.textContent = msg; e.hidden = false; });
+    return null;
+  }
+
+  // ---------- A ----------
+  function drawA() {
+    syncNum("a-p-num", st.p);
+    var sh = st.shown && st.shown.d.N === st.N ? st.shown : null;
+    bars($("a-canvas"), st.p, st.N, sh ? sh.d.x : null, sh ? (sh.label === "Example" ? "example: " : "this survey: ") + sh.d.x + " positive" : null);
+    var k = +$("a-look").value;
+    $("a-look-out").textContent = k >= 0 && k <= st.N && k === Math.round(k) ? Math.exp(ll(st.p, { x: k, N: st.N })).toFixed(3) : "–";
+    $("a-note").hidden = !(sh && sh.label === "Example");
+    var el = $("a-table");
+    if (!st.surveys.length) { el.innerHTML = '<div class="empty">No surveys yet. Press <b>Run a survey</b> or <b>Load example dataset</b>.</div>'; return; }
+    el.innerHTML = '<table class="data"><thead><tr><th>Survey</th><th>Tested</th><th>Positive</th><th>% positive</th></tr></thead><tbody>' +
+      st.surveys.map(function (s) {
+        return "<tr" + (s === st.shown ? ' class="now"' : "") + "><td>" + s.label + "</td><td>" + s.d.N + "</td><td>" + s.d.x + "</td><td>" + (100 * s.d.x / s.d.N).toFixed(0) + "%</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+  function simA() {
+    var s = { d: { x: rbinom(st.N, st.p), N: st.N }, truth: st.p, label: "Survey " + (++st.nSurvey) };
+    st.surveys.unshift(s); st.surveys = st.surveys.slice(0, 50); st.shown = st.lastSim = s;
+    drawA();
+  }
+  function exampleA() {
+    st.N = 50; $("a-n").value = 50;
+    var ex = { d: EXAMPLE.d, truth: EXAMPLE.truth, label: "Example" };
+    st.surveys = st.surveys.filter(function (s) { return s.label !== "Example"; });
+    st.surveys.unshift(ex); st.shown = ex; drawA();
+  }
+
+  // ---------- B ----------
+  function drawB() {
+    var got = current(); if (!got) { setup($("b-canvas")); setup($("b-mini")); return; }
+    var d = got.d, logS = st.bScale === "log", p = st.bCand, lp = ll(p, d), m = mle(d);
+    $("b-cand").value = p; syncNum("b-cand-num", p);
+    var ch = likChart($("b-canvas"), d, logS, "candidate p"), c = ch.g.c, f = ch.f;
+    vline(ch.g, f, m, css("--accent"), 1.2, [3, 3]);
+    var cy = logS ? lp : Math.exp(lp);
+    c.strokeStyle = css("--hit"); c.lineWidth = 1.5; c.beginPath(); c.moveTo(f.X(p), f.m.t + f.H); c.lineTo(f.X(p), f.Y(Math.max(cy, f.ylo))); c.stroke();
+    if (cy >= f.ylo) { c.fillStyle = css("--hit"); c.beginPath(); c.arc(f.X(p), f.Y(cy), 6.5, 0, 2 * Math.PI); c.fill(); }
+    c.restore();
+    $("b-curve-lab").textContent = logS ? "log-likelihood" : "likelihood";
+    $("b-r-cand").textContent = p.toFixed(3); $("b-r-lik").textContent = sci(Math.exp(lp));
+    $("b-r-log").textContent = fx(lp, 2); $("b-r-mle").textContent = m.toFixed(3);
+    $("b-mini-title").textContent = "The model at p = " + p.toFixed(3) + ": the orange bar is your result";
+    bars($("b-mini"), p, d.N, d.x, null);
+    $("b-mini-cap").innerHTML = "If p were " + p.toFixed(3) + ", the probability of exactly " + d.x + " positive out of " + d.N +
+      " is the orange bar's height: <b>" + sci(Math.exp(lp)) + "</b>. That is the likelihood.";
+  }
+
+  // ---------- C ----------
+  var BW = 0.1, XMAX = 8, NB = Math.round(XMAX / BW);
+  function runC(k) {
+    var cs = st.c;
+    for (var i = 0; i < k; i++) {
+      var d = { x: rbinom(cs.N, cs.p), N: cs.N }, m = mle(d), S = Math.max(0, 2 * (ll(m, d) - ll(cs.p, d)));
+      cs.S.push(S); if (S > CRIT) cs.above++;
+      cs.last = { d: d, m: m, S: S };
+    }
+    drawC();
+  }
+  function resetC() { st.c.S = []; st.c.above = 0; st.c.last = null; drawC(); }
+  function drawC() {
+    var cs = st.c; syncNum("c-p-num", cs.p);
+    var g = setup($("c-mini")), c = g.c;
+    if (cs.last) {
+      var d = cs.last.d, m = cs.last.m, top = ll(m, d), lo = Math.max(0.001, Math.min(m, cs.p) - 0.2), hi = Math.min(0.999, Math.max(m, cs.p) + 0.2);
+      var lp0 = ll(cs.p, d), ylo = Math.min(top - 3.5, lp0 - 1);
+      var f = axes(g, lo, hi, ylo, top + 0.8, "p", "log-likelihood", { left: 52 });
+      f.clip(); curve(g, f, d, lo, hi, true, ylo - 1);
+      vline(g, f, m, css("--accent"), 2); vline(g, f, cs.p, css("--miss"), 2);
+      // dashed line across from the top of the curve, then an arrow down to the curve at the truth
+      var x0 = f.X(m), x1 = f.X(cs.p), yT = f.Y(top), yB = f.Y(lp0), right = x1 > x0;
+      c.strokeStyle = css("--hit"); c.lineWidth = 1.5; c.setLineDash([5, 4]);
+      c.beginPath(); c.moveTo(x0, yT); c.lineTo(x1 + (right ? 14 : -14), yT); c.stroke(); c.setLineDash([]);
+      var ax = x1 + (right ? 8 : -8);
+      if (yB - yT > 8) {
+        c.lineWidth = 2.5; c.beginPath(); c.moveTo(ax, yT); c.lineTo(ax, yB - 2); c.stroke();
+        c.fillStyle = css("--hit"); c.beginPath(); c.moveTo(ax - 6, yB - 10); c.lineTo(ax + 6, yB - 10); c.lineTo(ax, yB); c.closePath(); c.fill();
+      }
+      c.restore();
+      c.fillStyle = css("--hit"); c.font = "600 12px " + css("--font-body"); c.textAlign = right ? "left" : "right"; c.textBaseline = "middle";
+      c.fillText("drop " + (top - lp0).toFixed(2), ax + (right ? 6 : -6), (yT + yB) / 2);
+      $("c-last").textContent = d.x + "/" + d.N + " · p̂ " + m.toFixed(2) + " · drop " + (top - lp0).toFixed(2) + " · S " + cs.last.S.toFixed(2);
+    } else {
+      c.fillStyle = css("--muted"); c.font = "14px " + css("--font-body"); c.textAlign = "center"; c.textBaseline = "middle";
+      c.fillText("Press “Run 1 study” to see one study", g.w / 2, g.h / 2); $("c-last").textContent = "–";
+    }
+    var bins = new Array(NB).fill(0), over = 0, n = cs.S.length;
+    cs.S.forEach(function (s) { if (s >= XMAX) over++; else bins[Math.floor(s / BW)]++; });
+    var dens = bins.map(function (b) { return n ? b / (n * BW) : 0; }), ymax = Math.min(Math.max(1.6, Math.max.apply(null, dens) * 1.08), 4);
+    var g2 = setup($("c-canvas")), c2 = g2.c;
+    var f2 = axes(g2, 0, XMAX, 0, ymax, "S", "share of studies (density)", { xticks: [0, 1, 2, 3, 4, 5, 6, 7, 8] });
+    f2.clip();
+    dens.forEach(function (v, j) {
+      if (!v) return; var tail = j * BW + BW > CRIT;
+      c2.fillStyle = tail ? css("--miss") : css("--bar"); c2.globalAlpha = tail ? 0.6 : 1;
+      c2.fillRect(f2.X(j * BW) + 0.25, f2.Y(v), Math.max(1, f2.X(BW) - f2.X(0) - 0.5), f2.Y(0) - f2.Y(v));
+    });
+    c2.globalAlpha = 1;
+    if ($("c-chi").checked) {
+      c2.strokeStyle = css("--ink"); c2.lineWidth = 2; c2.beginPath();
+      for (var s = 0.03; s <= XMAX; s += 0.02) { var y = f2.Y(Math.min(Math.exp(-s / 2) / Math.sqrt(2 * Math.PI * s), ymax * 1.5)); if (s === 0.03) c2.moveTo(f2.X(s), y); else c2.lineTo(f2.X(s), y); }
+      c2.lineWidth = 2.5; c2.stroke();
+    }
+    vline(g2, f2, CRIT, css("--miss"), 2, [5, 4]);
+    c2.restore();
+    c2.fillStyle = css("--miss"); c2.font = "600 12px " + css("--font-body"); c2.textAlign = "left"; c2.textBaseline = "top";
+    c2.fillText("3.84 (a drop of 1.92)" + (n ? ": " + pct(cs.above, n) + " of studies beyond" : ""), f2.X(CRIT) + 5, f2.m.t + 2);
+    if (over) { c2.fillStyle = css("--muted"); c2.textAlign = "right"; c2.fillText(over + " beyond 8 →", f2.m.l + f2.W - 2, f2.m.t + 20); }
+    if (!n) { c2.fillStyle = css("--muted"); c2.font = "14px " + css("--font-body"); c2.textAlign = "center"; c2.textBaseline = "middle"; c2.fillText("Run some studies to build up the picture", g2.w / 2, g2.h / 2); }
+    $("c-count").textContent = n.toLocaleString(); $("c-above").textContent = n ? cs.above + " (" + pct(cs.above, n) + ")" : "–";
+    $("c-chi-leg").hidden = !$("c-chi").checked;
+  }
+
+  // ---------- D ----------
+  var dFrame = null;
+  function drawD() {
+    var got = current(); dFrame = null; if (!got) { setup($("d-canvas")); return; }
+    var d = got.d, logS = st.dScale === "log", drop = st.drop, ci = interval(d, drop);
+    var pk = (100 * Math.exp(-drop)).toFixed(1) + "% of peak";
+    $("d-drop").value = drop; syncNum("d-drop-num", drop); $("d-drop-out").textContent = logS ? "" : (100 * Math.exp(-drop)).toFixed(1) + "% of peak";
+    $("d-drop-lab").textContent = logS ? "Line: drop below the top (log scale)" : "Line: height, % of the peak";
+    var ch = likChart($("d-canvas"), d, logS, "p"), c = ch.g.c, f = ch.f, top = ch.top;
+    var lineY = logS ? top - drop : Math.exp(top - drop), yl = Math.max(lineY, f.ylo);
+    c.fillStyle = css("--keep"); c.globalAlpha = 0.15; c.fillRect(f.X(ci[0]), f.Y(yl), f.X(ci[1]) - f.X(ci[0]), f.Y(f.ylo) - f.Y(yl)); c.globalAlpha = 1;
+    hline(ch.g, f, lineY, css("--keep"), 3);
+    c.strokeStyle = css("--keep"); c.lineWidth = 1.5; c.setLineDash([4, 3]);
+    ci.forEach(function (x) { c.beginPath(); c.moveTo(f.X(x), f.Y(lineY)); c.lineTo(f.X(x), f.m.t + f.H); c.stroke(); });
+    c.setLineDash([]);
+    var hasTruth = got.truth != null;
+    $("d-truth-row").hidden = !hasTruth; $("d-truth-leg").hidden = !(hasTruth && st.showTruth);
+    if (hasTruth && st.showTruth) vline(ch.g, f, got.truth, css("--miss"), 2.5);
+    c.restore();
+    c.fillStyle = css("--keep"); c.beginPath(); c.arc(f.m.l + f.W - 12, f.Y(lineY), 7, 0, 2 * Math.PI); c.fill();
+    c.font = "600 12px " + css("--font-body"); c.textAlign = "right"; c.textBaseline = "bottom";
+    c.fillText(logS ? "top − " + drop.toFixed(2) : (100 * Math.exp(-drop)).toFixed(1) + "% of peak", f.m.l + f.W - 24, f.Y(lineY) - 4);
+    dFrame = { f: f, top: top, logS: logS };
+    $("d-curve-lab").textContent = logS ? "log-likelihood" : "likelihood";
+    $("d-r-drop-k").textContent = logS ? "Drop below the top (log scale)" : "Line height (likelihood scale)";
+    $("d-r-drop").textContent = logS ? drop.toFixed(2) : pk;
+    $("d-r-int").textContent = ci[0].toFixed(3) + " to " + ci[1].toFixed(3);
+    var lv = 100 * level(drop), lvs = lv.toFixed(1);
+    $("d-r-level").textContent = lvs + "% of studies";
+    var msg = (logS ? "From tab C: the truth is less than <b>" + drop.toFixed(2) + "</b> below the top of the log-likelihood in about <b>"
+      : "On the likelihood scale a drop becomes a fraction of the peak: this line is at <b>" + pk + "</b>, the same as a drop of " + drop.toFixed(2) +
+        " on the log scale. The truth lies above it in about <b>") + lvs + "%</b> of studies. So this interval, " + ci[0].toFixed(3) + " to " + ci[1].toFixed(3) + ", is about a <b>" + lvs + "% interval</b>.";
+    if (hasTruth && st.showTruth) msg += " The true value was <b>" + got.truth.toFixed(2) + "</b>: " + (ci[0] <= got.truth && got.truth <= ci[1] ? "inside" : "outside") + " this interval.";
+    $("d-note").innerHTML = msg;
+  }
+  (function () { // drag the line on the chart
+    var cv = $("d-canvas"), dragging = false;
+    function setFromY(clientY) {
+      if (!dFrame) return;
+      var r = cv.getBoundingClientRect(), f = dFrame.f, v = f.ylo + (1 - (clientY - r.top - f.m.t) / f.H) * (f.yhi - f.ylo);
+      var drop = dFrame.logS ? dFrame.top - v : (v <= 0 ? 5 : -Math.log(v / Math.exp(dFrame.top)));
+      st.drop = Math.round(Math.max(0, Math.min(5, drop)) * 100) / 100; drawD();
+    }
+    cv.addEventListener("pointerdown", function (e) { dragging = true; try { cv.setPointerCapture(e.pointerId); } catch (x) {} setFromY(e.clientY); });
+    cv.addEventListener("pointermove", function (e) { if (dragging) setFromY(e.clientY); });
+    ["pointerup", "pointercancel"].forEach(function (t) { cv.addEventListener(t, function () { dragging = false; }); });
+  })();
+
+  // ---------- wiring ----------
+  var draw = { A: drawA, B: drawB, C: drawC, D: drawD };
+  function redraw() { draw[step](); }
+  function pickStep(s) {
+    step = s;
+    ["A", "B", "C", "D"].forEach(function (t) { $("t-" + t).setAttribute("aria-selected", t === s ? "true" : "false"); $("p-" + t).hidden = t !== s; });
+    renderSources(); redraw();
+    try { history.replaceState(null, "", "#" + s); } catch (e) {}
+  }
+  ["A", "B", "C", "D"].forEach(function (t) { $("t-" + t).onclick = function () { pickStep(t); }; });
+  // number boxes beside sliders: show the current value unless the user is typing in that box
+  function syncNum(id, v) { var el = $(id); if (document.activeElement !== el) el.value = +(+v).toFixed(3); }
+  function numIn(el, lo, hi) { var v = +el.value; return isFinite(v) && el.value !== "" ? Math.max(lo, Math.min(hi, v)) : null; }
+  function intIn(el, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(+el.value) || lo)); }
+
+  $("a-p").oninput = function () { st.p = +this.value; drawA(); };
+  $("a-p-num").oninput = function () { var v = numIn(this, 0.01, 0.99); if (v != null) { st.p = v; $("a-p").value = v; drawA(); } };
+  $("a-n").oninput = function () { st.N = intIn(this, 1, 500); drawA(); };
+  $("a-look").oninput = drawA;
+  $("a-sim").onclick = simA;
+  $("a-clear").onclick = function () { st.surveys = []; st.shown = null; drawA(); };
+  $("a-example").onclick = exampleA;
+
+  $("b-cand").oninput = function () { st.bCand = +this.value; drawB(); };
+  $("b-cand-num").oninput = function () { var v = numIn(this, 0.001, 0.999); if (v != null) { st.bCand = v; drawB(); } };
+  $("b-scale-lik").onclick = function () { st.bScale = "lik"; this.setAttribute("aria-pressed", "true"); $("b-scale-log").setAttribute("aria-pressed", "false"); drawB(); };
+  $("b-scale-log").onclick = function () { st.bScale = "log"; this.setAttribute("aria-pressed", "true"); $("b-scale-lik").setAttribute("aria-pressed", "false"); drawB(); };
+  all("[data-own]").forEach(function (box) {
+    var ex = box.querySelector("[data-own-x]"), en = box.querySelector("[data-own-n]");
+    [ex, en].forEach(function (el) { el.oninput = function () { st.own.x = Math.round(+ex.value); st.own.N = Math.round(+en.value); redraw(); }; });
+  });
+
+  $("c-p").oninput = function () { st.c.p = +this.value; resetC(); };
+  $("c-p-num").oninput = function () { var v = numIn(this, 0.05, 0.95); if (v != null) { st.c.p = v; $("c-p").value = v; resetC(); } };
+  $("c-n").oninput = function () { st.c.N = intIn(this, 1, 1000); resetC(); };
+  $("c-1").onclick = function () { runC(1); };
+  $("c-100").onclick = function () { runC(100); };
+  $("c-1000").onclick = function () { runC(1000); };
+  $("c-reset").onclick = resetC;
+  $("c-chi").onchange = drawC;
+
+  $("d-drop").oninput = function () { st.drop = +this.value; drawD(); };
+  $("d-drop-num").oninput = function () { var v = numIn(this, 0, 5); if (v != null) { st.drop = v; drawD(); } };
+  $("d-scale-log").onclick = function () { st.dScale = "log"; this.setAttribute("aria-pressed", "true"); $("d-scale-lik").setAttribute("aria-pressed", "false"); drawD(); };
+  $("d-scale-lik").onclick = function () { st.dScale = "lik"; this.setAttribute("aria-pressed", "true"); $("d-scale-log").setAttribute("aria-pressed", "false"); drawD(); };
+  $("d-truth").onchange = function () { st.showTruth = this.checked; drawD(); };
+
+  window.addEventListener("resize", redraw);
+  if (window.matchMedia) { var mq = window.matchMedia("(prefers-color-scheme: dark)"); if (mq.addEventListener) mq.addEventListener("change", redraw); }
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  var h = (location.hash || "").slice(1);
+  pickStep(["A", "B", "C", "D"].indexOf(h) >= 0 ? h : "A");
+  window.__lab = { st: st, ll: ll, mle: mle, interval: interval, level: level, EXAMPLE: EXAMPLE, pickStep: pickStep, runC: runC, drawD: drawD };
+})();
+</script>
+</body>
+</html>

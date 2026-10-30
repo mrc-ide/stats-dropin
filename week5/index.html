@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>One Town, Two Studies</title>
+<style>
+/* Two parts, four steps each: the town, a cohort study, a case-control study, a summary. Part 1 is a common
+   outcome (persistent cough), part 2 a rare one (lung cancer). Each study gives a fixed 2x2 table (no re-running,
+   no zero cells), and students build the risk ratio and odds ratio themselves by clicking table cells into the
+   slots of each formula. The true values sit behind a Reveal button in "Your answers" (shown on the summaries).
+   Palette follows the printed worksheets and the week 4 Likelihood Lab. */
+:root {
+  --bg: #F6F8FB;
+  --panel: #FFFFFF;
+  --soft: #EAF1F8;
+  --fg: #1B2533;
+  --muted: #5A6878;
+  --line: #D5DEE9;
+  --ink: #1F3A5F;
+  --accent: #2F6BB0;
+  --bar: #A9C0DA;
+  --hit: #D9822B;
+  --keep: #2E7D32;
+  --miss: #B23A2B;
+  --font-body: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+    --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+  --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); color: var(--ink); line-height: 1.15; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+nav.steps { display: grid; gap: 6px; }
+nav.steps .grp { display: flex; flex-wrap: wrap; align-items: end; gap: 0 8px; border-bottom: 1px solid var(--line); transition: opacity 0.2s; }
+nav.steps .grp.off { opacity: 0.45; }
+nav.steps .grp.off:hover { opacity: 0.8; }
+nav.steps .glab { width: 280px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); padding: 0 0 12px; }
+@media (max-width: 820px) { nav.steps .glab { width: 100%; padding: 4px 0 0; } }
+nav.steps .row { display: flex; flex-wrap: wrap; }
+nav.steps button {
+  font: inherit; font-weight: 600; font-size: 15px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  padding: 6px 12px 10px; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+nav.steps button[aria-current="step"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.steps .num { font-family: var(--font-num); font-size: 13px; margin-right: 6px; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 820px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.controls { display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.controls .part { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.controls h2 { margin: -8px 0 0; font-size: 20px; color: var(--ink); }
+.controls p { margin: 0; font-size: 15px; }
+.controls p.ask { color: var(--muted); border-left: 3px solid var(--hit); padding-left: 10px; }
+.controls b { color: var(--ink); }
+button.act {
+  font: inherit; font-size: 14.5px; font-weight: 600; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--panel); justify-self: start;
+}
+button.act.ghost { background: transparent; color: var(--accent); }
+button.act:disabled { opacity: 0.35; cursor: default; }
+.pager { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+
+.stage { display: grid; gap: 12px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; min-width: 0; }
+.card h3 { margin: 0; font-size: 14px; color: var(--ink); }
+.card .how { margin: 0; font-size: 13.5px; color: var(--muted); }
+canvas { display: block; width: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; }
+
+/* the study: table on the left, calculations on the right */
+.work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 640px) { .work { grid-template-columns: minmax(0, 1fr); } }
+table.tt { border-collapse: separate; border-spacing: 4px; width: 100%; font-size: 14px; }
+table.tt th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-align: center; padding: 2px; }
+table.tt th.r { text-align: left; }
+table.tt td { padding: 0; }
+.cell {
+  width: 100%; font: inherit; font-family: var(--font-num); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+  padding: 7px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer;
+}
+.cell.out { color: var(--hit); }
+.cell.tot { background: transparent; color: var(--muted); font-weight: 500; }
+.picking .cell:hover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+
+.builds { display: grid; gap: 14px; }
+.build { display: grid; gap: 6px; }
+.build h4 { margin: 0; font-size: 14px; color: var(--ink); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.build h4 button { font: inherit; font-size: 12.5px; font-weight: 400; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
+.eq { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.frac { display: grid; justify-items: center; gap: 3px; }
+.frac .bar { width: 100%; height: 2px; background: var(--fg); }
+.frac .cap { font-size: 11.5px; color: var(--muted); }
+.op { font-size: 20px; color: var(--muted); }
+.slot {
+  min-width: 64px; font: inherit; font-family: var(--font-num); font-size: 15px; font-weight: 600; padding: 5px 6px;
+  border: 1.5px dashed var(--muted); border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer;
+}
+.slot.full { border-style: solid; border-color: var(--line); background: var(--bg); }
+.slot.active { border: 2px solid var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.res { font-size: 14px; font-family: var(--font-num); min-height: 1.5em; }
+.res .ok { color: var(--keep); font-weight: 700; }
+.res .no { color: var(--miss); font-family: var(--font-body); }
+.res b { color: var(--ink); font-size: 16px; }
+
+table.ans { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.ans th, table.ans td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: center; }
+table.ans th { font-size: 12px; color: var(--muted); font-weight: 600; }
+table.ans th.r { text-align: left; }
+table.ans td { font-family: var(--font-num); font-weight: 600; color: var(--ink); }
+table.ans td.blank { color: var(--line); font-weight: 400; }
+table.ans tr.now th.r { color: var(--ink); }
+table.ans tr.grp th { text-align: left; font-size: 13px; color: var(--ink); padding-top: 10px; border-bottom: 2px solid var(--line); }
+table.ans tr.off { opacity: 0.5; }
+table.ans tr.truth th, table.ans tr.truth td { background: var(--soft); }
+table.ans td.fixed { font-weight: 600; }
+table.ans button { font: inherit; font-family: var(--font-body); font-size: 13px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+.sum { display: grid; gap: 14px; }
+.sum h3 { font-size: 18px; }
+.sum .lead { background: var(--soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; padding: 14px 16px; font-size: 18px; line-height: 1.45; margin: 0; }
+.sum .lead b { color: var(--ink); }
+.sum .lead .both { display: block; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 15.5px; }
+.sum .prose { display: grid; gap: 10px; max-width: 72ch; }
+.sum .prose p { margin: 0; font-size: 15.5px; line-height: 1.6; }
+.sum .prose b { color: var(--ink); }
+table.ans td .mk { font-family: var(--font-body); font-size: 12px; font-weight: 600; margin-left: 6px; }
+table.ans td.hit .mk { color: var(--keep); }
+table.ans td.miss .mk { color: var(--miss); }
+.sum .key { font-size: 12.5px; color: var(--muted); margin: -4px 0 0; }
+footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Stats drop-in · Week 5</span>
+    <h1>One Town, Two Studies</h1>
+  </header>
+
+  <nav class="steps" aria-label="Steps" id="nav"></nav>
+
+  <section class="bench">
+    <div class="controls">
+      <p class="part" id="part"></p>
+      <h2 id="title"></h2>
+      <div id="text" style="display:grid;gap:12px"></div>
+      <button class="act" id="run" hidden>Run the study</button>
+      <p class="ask" id="ask"></p>
+      <div class="pager">
+        <button class="act ghost" id="back">← Back</button>
+        <button class="act" id="next">Next →</button>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="card" id="town-card">
+        <h3 id="town-title">The town</h3>
+        <canvas id="town" role="img" aria-label="Every person in the town as a square"></canvas>
+        <div class="legend" id="town-legend"></div>
+      </div>
+
+      <div class="card" id="work-card" hidden>
+        <h3 id="work-title"></h3>
+        <p class="how">Click a box in a calculation, then click the number from the table that belongs there.</p>
+        <div class="work">
+          <div id="table"></div>
+          <div class="builds" id="builds"></div>
+        </div>
+      </div>
+
+      <div class="card sum" id="sum-card" hidden></div>
+
+      <div class="card" id="ans-card" hidden>
+        <h3>Your answers</h3>
+        <div id="answers"></div>
+      </div>
+    </div>
+  </section>
+  <footer>Made-up town, realistic numbers. All calculations run in your browser.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- the town ----------
+  // 10,000 adults; people 0-1999 smoke. Each outcome has fixed case counts, and each study a fixed table
+  // (expected counts, rounded), so every answer on the worksheet is exact.
+  // Study tables: a, b = smokers in column 1 / column 2; c, d = non-smokers in column 1 / column 2.
+  var POP = 10000, NS = 2000;
+  var OUT = {
+    cough: {
+      name: "a persistent cough", short: "cough", casesS: 1000, casesN: 1600,
+      cohort: { a: 100, b: 100, c: 160, d: 640 },   // 1,000 people at random
+      cc:     { a: 77,  b: 27,  c: 123, d: 173 }    // 200 cases, 200 controls
+    },
+    lung: {
+      name: "lung cancer", short: "lung cancer", casesS: 80, casesN: 20,
+      cohort: { a: 7,  b: 193, c: 3,  d: 797 },     // 1,000 people at random (a realistic draw: 10 cases, not the expected 8 + 2)
+      cc:     { a: 80, b: 19,  c: 20, d: 81 }       // all 100 cases, 100 controls
+    }
+  };
+  function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function shuffle(a, rnd) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(rnd() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function range(a, b) { var r = []; for (var i = a; i < b; i++) r.push(i); return r; }
+  Object.keys(OUT).forEach(function (key, s) {
+    var o = OUT[key], rnd = mulberry(2026 + s), isCase = new Uint8Array(POP);
+    shuffle(range(0, NS), rnd).slice(0, o.casesS).forEach(function (i) { isCase[i] = 1; });
+    shuffle(range(NS, POP), rnd).slice(0, o.casesN).forEach(function (i) { isCase[i] = 1; });
+    o.isCase = isCase;
+    // the four groups: smoker cases, smoker non-cases, non-smoker cases, non-smoker non-cases
+    o.groups = {
+      a: range(0, NS).filter(function (i) { return isCase[i]; }),
+      b: range(0, NS).filter(function (i) { return !isCase[i]; }),
+      c: range(NS, POP).filter(function (i) { return isCase[i]; }),
+      d: range(NS, POP).filter(function (i) { return !isCase[i]; })
+    };
+  });
+  // the people in a study: the table's counts, drawn at random from each group (for the picture only)
+  function pick(o, t) {
+    var sel = new Uint8Array(POP);
+    ["a", "b", "c", "d"].forEach(function (g) { shuffle(o.groups[g].slice(), Math.random).slice(0, t[g]).forEach(function (i) { sel[i] = 1; }); });
+    return sel;
+  }
+
+  // ---------- the steps ----------
+  var STEPS = [
+    { part: 0, out: "cough", kind: "town", title: "The town",
+      text: ["10,000 adults, 2,000 of whom smoke, followed for 20 years. Each square is a person.",
+             "<b>Orange</b> squares developed a persistent cough: 26 in every 100 people."],
+      ask: "Look at the two blocks. Is a cough more common among smokers?" },
+    { part: 0, out: "cough", kind: "cohort", title: "A cohort study",
+      text: ["Recruit <b>1,000 people at random</b>. Record who smokes, then follow them for 20 years to see who develops a cough."],
+      ask: "Work out the risk ratio and the odds ratio from your study's table." },
+    { part: 0, out: "cough", kind: "cc", title: "A case-control study",
+      text: ["Find <b>200 people who developed a cough</b> (cases) and <b>200 who didn't</b> (controls). Ask everyone whether they smoked."],
+      ask: "Work out both ratios again, then compare with your cohort. Which one agrees?" },
+    { part: 0, out: "cough", kind: "summary", title: "Summary",
+      text: ["What the two studies found, and why."] },
+    { part: 1, out: "lung", kind: "town", title: "The town again",
+      text: ["The same town, but now the outcome is <b>lung cancer</b>: 1 in every 100 people.",
+             "Orange squares developed lung cancer."],
+      ask: "A cohort of 1,000 people at random: how many of them would you expect to get lung cancer?" },
+    { part: 1, out: "lung", kind: "cohort", title: "A cohort study",
+      text: ["Recruit <b>1,000 people at random</b> and follow them for 20 years."],
+      ask: "How many of your 1,000 got lung cancer? Work out both ratios." },
+    { part: 1, out: "lung", kind: "cc", title: "A case-control study",
+      text: ["Find <b>all 100 people</b> in the town who developed lung cancer (cases) and <b>100 who didn't</b> (controls). Ask everyone whether they smoked."],
+      ask: "Work out both ratios. Then reveal the truth under <b>Your answers</b>: which study came closest?" },
+    { part: 1, out: "lung", kind: "summary", title: "Summary",
+      text: ["What the two studies found, and what that means for studying a rare disease."] }
+  ];
+  var PARTS = ["Part 1 · Persistent cough (common)", "Part 2 · Lung cancer (rare)"];
+  var OUTS = ["cough", "lung"];
+  function stepOf(p, kind) { for (var i = 0; i < STEPS.length; i++) if (STEPS[i].part === p && STEPS[i].kind === kind) return i; }
+
+  // ---------- state ----------
+  // per study step: the people picked (after Run), the slots of each calculation, and the active slot
+  var st = { step: 0, active: null, work: {}, reveal: [false, false] };
+  function W(i) {
+    if (!st.work[i]) st.work[i] = { sel: null, rr: [null, null, null, null], or: [null, null, null, null], done: { rr: null, or: null } };
+    return st.work[i];
+  }
+
+  // ---------- maths ----------
+  function cells(t) {
+    return { a: t.a, b: t.b, c: t.c, d: t.d, r1: t.a + t.b, r2: t.c + t.d, c1: t.a + t.c, c2: t.b + t.d, n: t.a + t.b + t.c + t.d };
+  }
+  function target(t, f) { return f === "rr" ? (t.a / (t.a + t.b)) / (t.c / (t.c + t.d)) : (t.a * t.d) / (t.b * t.c); }
+  function value(t, slots) { var v = cells(t); return (v[slots[0]] / v[slots[1]]) / (v[slots[2]] / v[slots[3]]); }
+  function close(x, y) { return Math.abs(x / y - 1) < 1e-9; }
+  function truth(o) { return { a: o.casesS, b: NS - o.casesS, c: o.casesN, d: POP - NS - o.casesN }; }
+
+  // ---------- formatting ----------
+  function comma(n) { return n.toLocaleString("en-GB"); }
+  function sig(v) { return String(+v.toPrecision(3)); }
+  function r2(v) { return v.toFixed(v >= 10 ? 1 : 2); }
+
+  // ---------- canvas ----------
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function setup(cv, h) {
+    cv.style.height = h + "px";
+    var r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    var c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+    return { c: c, w: r.width, h: r.height };
+  }
+  // smokers fill a block on the left, non-smokers a block on the right, column by column
+  function layout(W) {
+    var Ht = Math.max(170, Math.min(240, W * 0.36));
+    var pitch = Math.max(3, Math.sqrt(W * Ht / POP)), rows, sc, nc;
+    for (;; pitch *= 0.98) {
+      var avail = Math.floor(W / pitch) - 2;
+      rows = Math.ceil(POP / avail);
+      for (;; rows++) { sc = Math.ceil(NS / rows); nc = Math.ceil((POP - NS) / rows); if (sc + nc <= avail) break; }
+      if (rows * pitch <= Ht * 1.15 || pitch <= 3) break;
+    }
+    return { pitch: pitch, rows: rows, sc: sc, top: 20 };
+  }
+  function pos(L, i) {
+    var j = i < NS ? i : i - NS, col = Math.floor(j / L.rows) + (i < NS ? 0 : L.sc + 2);
+    return [col * L.pitch, L.top + (j % L.rows) * L.pitch];
+  }
+  function drawTown() {
+    var S = STEPS[st.step];
+    $("town-card").hidden = S.kind === "summary";
+    if (S.kind === "summary") return;
+    var o = OUT[S.out], sel = S.kind === "town" ? null : W(st.step).sel;
+    var cv = $("town"), L = layout(cv.getBoundingClientRect().width);
+    var g = setup(cv, L.top + L.rows * L.pitch + 2), c = g.c;
+    var dot = L.pitch >= 4 ? L.pitch - 1 : L.pitch * 0.8;
+    var colBar = css("--bar"), colHit = css("--hit"), colAcc = css("--accent"), colLine = css("--line");
+    [0, 1].forEach(function (pass) {
+      for (var i = 0; i < POP; i++) {
+        var cs = o.isCase[i]; if (cs !== pass) continue;
+        var p = pos(L, i);
+        if (!sel) { c.globalAlpha = 1; c.fillStyle = cs ? colHit : colBar; }
+        else if (sel[i]) { c.globalAlpha = 1; c.fillStyle = cs ? colHit : colAcc; }
+        else { c.globalAlpha = cs ? 0.3 : 1; c.fillStyle = cs ? colHit : colLine; }
+        c.fillRect(p[0], p[1], dot, dot);
+      }
+    });
+    c.globalAlpha = 1;
+    c.font = "600 12px " + css("--font-body"); c.fillStyle = css("--ink"); c.textBaseline = "top"; c.textAlign = "left";
+    c.fillText("Smokers", 0, 2);
+    c.fillText("Non-smokers", (L.sc + 2) * L.pitch, 2);
+    var lg = '<span><span class="sw" style="background:var(--hit)"></span>developed ' + o.name + "</span>";
+    if (!sel) {
+      lg += '<span><span class="sw" style="background:var(--bar)"></span>did not</span>';
+      $("town-title").textContent = "The whole town: 10,000 people";
+    } else {
+      lg += '<span><span class="sw" style="background:var(--accent)"></span>in the study, did not develop it</span>' +
+            '<span><span class="sw" style="background:var(--line)"></span>not in the study</span>';
+      $("town-title").textContent = "Who is in your " + (S.kind === "cohort" ? "cohort" : "case-control") + " study";
+    }
+    $("town-legend").innerHTML = lg;
+  }
+
+  // ---------- the study's table and the two calculations ----------
+  function drawWork() {
+    var S = STEPS[st.step], w = st.work[st.step];
+    $("work-card").hidden = S.kind === "town" || S.kind === "summary" || !w || !w.sel;
+    if ($("work-card").hidden) return;
+    var o = OUT[S.out], t = o[S.kind], v = cells(t), cc = S.kind === "cc";
+    var h1 = cc ? "Cases" : "Got " + o.short, h2 = cc ? "Controls" : "Didn't";
+    $("work-title").textContent = "Your " + (cc ? "case-control" : "cohort") + " study: " + comma(v.n) + " people";
+    function cell(k, cls) { return '<td><button class="cell ' + (cls || "") + '" data-cell="' + k + '">' + comma(v[k]) + "</button></td>"; }
+    $("table").innerHTML = '<table class="tt' + (st.active ? " picking" : "") + '"><tr><th></th><th>' + h1 + "</th><th>" + h2 + "</th><th>Total</th></tr>" +
+      '<tr><th class="r">Smokers</th>' + cell("a", "out") + cell("b") + cell("r1", "tot") + "</tr>" +
+      '<tr><th class="r">Non-smokers</th>' + cell("c", "out") + cell("d") + cell("r2", "tot") + "</tr>" +
+      '<tr><th class="r">Total</th>' + cell("c1", "tot") + cell("c2", "tot") + cell("n", "tot") + "</tr></table>";
+    $("table").querySelectorAll("[data-cell]").forEach(function (b) { b.onclick = function () { place(b.getAttribute("data-cell")); }; });
+
+    $("builds").innerHTML = ["rr", "or"].map(function (f) {
+      var s = w[f];
+      function slot(j) {
+        var on = st.active && st.active.f === f && st.active.j === j;
+        return '<button class="slot' + (s[j] ? " full" : "") + (on ? " active" : "") + '" data-f="' + f + '" data-j="' + j + '">' + (s[j] ? comma(v[s[j]]) : "?") + "</button>";
+      }
+      var res = "";
+      if (s.every(Boolean)) {
+        var val = value(t, s), tg = target(t, f), hint = f === "rr"
+          ? "A risk is the number who got it ÷ everyone in that group."
+          : "Odds are the number who got it ÷ the number who didn't, in the same group.";
+        if (cc) hint = hint.replace(/got it/g, "are cases").replace("didn't", "are controls");
+        if (close(val, tg)) res = sig(v[s[0]] / v[s[1]]) + " ÷ " + sig(v[s[2]] / v[s[3]]) + " = <b>" + r2(val) + '</b> <span class="ok">✓</span>';
+        else if (close(val, 1 / tg)) res = '<span class="no">That gives 1 ÷ the answer. Check which number goes on top in each fraction.</span>';
+        else res = '<span class="no">Not quite. ' + hint + "</span>";
+      }
+      return '<div class="build"><h4>' + (f === "rr" ? "Risk ratio" : "Odds ratio") + '<button data-clear="' + f + '">clear</button></h4>' +
+        '<div class="eq"><div class="frac">' + slot(0) + '<span class="bar"></span>' + slot(1) + '<span class="cap">smokers</span></div>' +
+        '<span class="op">÷</span><div class="frac">' + slot(2) + '<span class="bar"></span>' + slot(3) + '<span class="cap">non-smokers</span></div></div>' +
+        '<div class="res">' + res + "</div></div>";
+    }).join("");
+    $("builds").querySelectorAll("[data-j]").forEach(function (b) {
+      b.onclick = function () { st.active = { f: b.getAttribute("data-f"), j: +b.getAttribute("data-j") }; drawWork(); };
+    });
+    $("builds").querySelectorAll("[data-clear]").forEach(function (b) {
+      b.onclick = function () { var f = b.getAttribute("data-clear"); w[f] = [null, null, null, null]; w.done[f] = null; st.active = { f: f, j: 0 }; drawWork(); drawAnswers(); };
+    });
+  }
+  // put a table cell into the active slot, then move to the next empty slot
+  function place(k) {
+    if (!st.active) return;
+    var w = W(st.step), S = STEPS[st.step], t = OUT[S.out][S.kind], f = st.active.f;
+    w[f][st.active.j] = k;
+    w.done[f] = w[f].every(Boolean) && close(value(t, w[f]), target(t, f)) ? target(t, f) : null;
+    st.active = nextEmpty(w);
+    drawWork(); drawAnswers();
+  }
+  function nextEmpty(w) {
+    var order = ["rr", "or"];
+    for (var i = 0; i < order.length; i++) for (var j = 0; j < 4; j++) if (!w[order[i]][j]) return { f: order[i], j: j };
+    return null;
+  }
+
+  // ---------- your answers ----------
+  // rows per disease: cohort, case-control, whole town (the truth, behind a Reveal button)
+  function drawAnswers() {
+    var S = STEPS[st.step], any = STEPS.some(function (T, i) { return (T.kind === "cohort" || T.kind === "cc") && st.work[i] && st.work[i].sel; });
+    $("ans-card").hidden = !any || S.kind === "summary";
+    if ($("ans-card").hidden) return;
+    function val(i, f) { var w = st.work[i]; return w && w.done[f] != null ? "<td>" + r2(w.done[f]) + "</td>" : '<td class="blank">–</td>'; }
+    var html = '<table class="ans"><tr><th class="r"></th><th>Risk ratio</th><th>Odds ratio</th></tr>';
+    [0, 1].forEach(function (p) {
+      var off = p !== S.part ? " off" : "", t = truth(OUT[OUTS[p]]);
+      html += '<tr class="grp' + off + '"><th colspan="3">' + PARTS[p].replace(/^Part \d · /, "") + "</th></tr>" +
+        '<tr class="' + off + '"><th class="r">Cohort</th>' + val(stepOf(p, "cohort"), "rr") + val(stepOf(p, "cohort"), "or") + "</tr>" +
+        '<tr class="' + off + '"><th class="r">Case-control</th>' + val(stepOf(p, "cc"), "rr") + val(stepOf(p, "cc"), "or") + "</tr>" +
+        '<tr class="truth' + off + '"><th class="r">Whole town (the truth)</th>' +
+        (st.reveal[p] ? '<td class="fixed">' + r2(target(t, "rr")) + '</td><td class="fixed">' + r2(target(t, "or")) + "</td>"
+                      : '<td colspan="2"><button data-reveal="' + p + '">Reveal</button></td>') + "</tr>";
+    });
+    $("answers").innerHTML = html + "</table>";
+    $("answers").querySelectorAll("[data-reveal]").forEach(function (b) { b.onclick = function () { st.reveal[+b.getAttribute("data-reveal")] = true; drawAnswers(); }; });
+  }
+
+  // ---------- summaries ----------
+  // results table with each estimate marked against the truth in its column (within 10% counts as close)
+  function resultsTable(p) {
+    var o = OUT[OUTS[p]], t = truth(o);
+    function td(x, f) {
+      var v = target(x, f), ok = Math.abs(v / target(t, f) - 1) < 0.1;
+      return '<td class="' + (ok ? "hit" : "miss") + '">' + r2(v) + '<span class="mk">' + (ok ? "✓ close" : "✗ off") + "</span></td>";
+    }
+    function row(lab, x) { return '<tr><th class="r">' + lab + "</th>" + td(x, "rr") + td(x, "or") + "</tr>"; }
+    return '<table class="ans"><tr><th class="r"></th><th>Risk ratio</th><th>Odds ratio</th></tr>' +
+      row("Cohort (1,000 people)", o.cohort) + row("Case-control (" + comma(cells(o.cc).n) + " people)", o.cc) +
+      '<tr class="truth"><th class="r">Whole town (the truth)</th><td class="fixed">' + r2(target(t, "rr")) + '</td><td class="fixed">' + r2(target(t, "or")) + "</td></tr></table>" +
+      '<p class="key">Each estimate is compared with the truth in its own column; within 10% counts as close.</p>';
+  }
+  function prose(ps) { return '<div class="prose">' + ps.map(function (x) { return "<p>" + x + "</p>"; }).join("") + "</div>"; }
+  var SUMMARY = [
+    function () {
+      return '<p class="lead">A case-control study gets the <b>odds ratio</b> right but not the risk ratio. For a common ' +
+        "outcome like a cough, those are different numbers: smokers are <b>2.5 times</b> as likely to get a cough, not 4 times.</p>" +
+        resultsTable(0) + prose([
+        "The cohort recruited people at random, so its table is the town in miniature. 100 of its 200 smokers got a cough, " +
+          "a genuine risk of 0.5, and both of its ratios match the truth exactly.",
+        "The case-control study is different because the researchers chose who to include. Half of its 400 people have a " +
+          "cough, against 26 in 100 in the town. That makes “77 of 104 smokers got a cough” meaningless as a risk: had they " +
+          "taken more controls it would have fallen, fewer and it would have risen. So its risk ratio of 1.78 is wrong.",
+        "Its odds ratio survives. Choosing how many cases and controls to take scales the two columns of the table up or down, " +
+          "and the odds ratio, (a × d) ÷ (b × c), has one number from each column on top and one underneath, so the scaling " +
+          "cancels out. That is why a case-control study can always give you an odds ratio, and never a risk ratio.",
+        "The catch is that here the two are different numbers. A cough is so common that odds and risks are far apart, so an " +
+          "odds ratio of 4 must not be read as “four times as likely”. Which raises the question: if a case-control study " +
+          "can only give us an odds ratio, why use one at all? Part 2 answers that."
+      ]);
+    },
+    function () {
+      return '<p class="lead">For a rare disease, a case-control study is the better tool. It found <b>all 100 cases with ' +
+        "200 people</b>, and because lung cancer is rare its odds ratio is also close to the risk ratio: smokers are about " +
+        "<b>16 times</b> as likely to get lung cancer.<span class=\"both\"><b>Across both parts:</b> a case-control study always " +
+        "estimates the odds ratio. Use one when the outcome is rare, where it needs far fewer people and the odds ratio is close " +
+        "to the risk ratio. When the outcome is common, a cohort gives the risk ratio directly, and an odds ratio must not be " +
+        "read as “times as likely”.</span></p>" +
+        resultsTable(1) + prose([
+        "Lung cancer is rare, and that is bad news for a cohort. Only 10 of its 1,000 people developed it, and only 3 of those " +
+          "were non-smokers. With so few cases, chance takes over: its risk ratio of 9.33 is a long way from the true 16.0, and " +
+          "one non-smoker case more or less would have moved it to 7.0 or 14.0. Finding 100 cases would mean following the " +
+          "whole town for 20 years.",
+        "The case-control study turns this round by starting from the cases. It found all 100 of them and needed only 100 " +
+          "controls alongside: 200 people, a fifth of the cohort. Its odds ratio of 17.1 landed close to the truth.",
+        "And because lung cancer is rare, the odds ratio is nearly the risk ratio. Almost everyone is in the “didn't get it” " +
+          "column, so each odds is almost the same as the risk, and the true odds ratio (16.6) sits close to the true risk " +
+          "ratio (16.0). So here, unlike the cough, the case-control odds ratio can be read as “times as likely”. (Its risk " +
+          "ratio of 4.08 is still meaningless, for the same reason as in part 1.)",
+        "This is the position Richard Doll and Austin Bradford Hill were in in 1950: a rare disease and a suspected cause. " +
+          "Their case-control study of lung cancer patients in London hospitals was one of the first to show the link with " +
+          "smoking. The cohort study they started next, following British doctors, took years to confirm it."
+      ]);
+    }
+  ];
+  function drawSummary() {
+    var S = STEPS[st.step];
+    $("sum-card").hidden = S.kind !== "summary";
+    if (S.kind !== "summary") return;
+    st.reveal[S.part] = true;
+    $("sum-card").innerHTML = SUMMARY[S.part]();
+  }
+
+  // ---------- steps ----------
+  function renderStep() {
+    var S = STEPS[st.step], w = st.work[st.step];
+    $("nav").innerHTML = [0, 1].map(function (p) {
+      return '<div class="grp' + (p === S.part ? "" : " off") + '"><span class="glab">' + PARTS[p] + '</span><div class="row">' + STEPS.map(function (T, i) {
+        if (T.part !== p) return "";
+        return '<button data-i="' + i + '"' + (i === st.step ? ' aria-current="step"' : "") + '><span class="num">' + (i + 1) + "</span>" + T.title + "</button>";
+      }).join("") + "</div></div>";
+    }).join("");
+    $("nav").querySelectorAll("[data-i]").forEach(function (b) { b.onclick = function () { go(+b.getAttribute("data-i")); }; });
+    $("part").textContent = PARTS[S.part];
+    $("title").textContent = S.title;
+    $("text").innerHTML = S.text.map(function (x) { return "<p>" + x + "</p>"; }).join("");
+    $("run").hidden = S.kind === "town" || S.kind === "summary" || !!(w && w.sel);
+    $("ask").innerHTML = S.ask || "";
+    $("ask").hidden = !S.ask || (S.kind !== "town" && !(w && w.sel));
+    $("back").disabled = st.step === 0;
+    $("next").disabled = st.step === STEPS.length - 1;
+  }
+  function redraw() { renderStep(); drawTown(); drawWork(); drawSummary(); drawAnswers(); }
+  function go(i) { st.step = Math.max(0, Math.min(STEPS.length - 1, i)); st.active = st.work[st.step] ? nextEmpty(st.work[st.step]) : null; redraw(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  $("run").onclick = function () {
+    var S = STEPS[st.step], w = W(st.step);
+    w.sel = pick(OUT[S.out], OUT[S.out][S.kind]);
+    st.active = { f: "rr", j: 0 };
+    redraw();
+  };
+  $("back").onclick = function () { go(st.step - 1); };
+  $("next").onclick = function () { go(st.step + 1); };
+  window.addEventListener("resize", function () { drawTown(); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  redraw();
+})();
+</script>
+</body>
+</html>

@@ -135,6 +135,8 @@ table.ans th { font-size: 12px; color: var(--muted); font-weight: 600; }
 table.ans th.r { text-align: left; }
 table.ans td { font-family: var(--font-num); font-weight: 600; color: var(--ink); }
 table.ans td.blank { color: var(--line); font-weight: 400; }
+/* a case-control study's risk ratio: computed, but not a valid thing to report */
+table.ans td.invalid { color: var(--miss); }
 table.ans tr.now th.r { color: var(--ink); }
 table.ans tr.grp th { text-align: left; font-size: 13px; color: var(--ink); padding-top: 10px; border-bottom: 2px solid var(--line); }
 table.ans tr.off { opacity: 0.5; }
@@ -439,13 +441,17 @@ footer { font-size: 13px; color: var(--muted); }
     var S = STEPS[st.step], any = STEPS.some(function (T, i) { return (T.kind === "cohort" || T.kind === "cc") && st.work[i] && st.work[i].sel; });
     $("ans-card").hidden = !any || S.kind === "summary";
     if ($("ans-card").hidden) return;
-    function val(i, f) { var w = st.work[i]; return w && w.done[f] != null ? "<td>" + r2(w.done[f]) + "</td>" : '<td class="blank">–</td>'; }
+    function val(i, f, bad) {
+      var w = st.work[i];
+      if (!w || w.done[f] == null) return '<td class="blank">–</td>';
+      return bad ? '<td class="invalid" title="Not valid: a case-control study cannot estimate a risk ratio">' + r2(w.done[f]) + "</td>" : "<td>" + r2(w.done[f]) + "</td>";
+    }
     var html = '<table class="ans"><tr><th class="r"></th><th>Risk ratio</th><th>Odds ratio</th></tr>';
     [0, 1].forEach(function (p) {
       var off = p !== S.part ? " off" : "", t = truth(OUT[OUTS[p]]);
       html += '<tr class="grp' + off + '"><th colspan="3">' + PARTS[p].replace(/^Part \d · /, "") + "</th></tr>" +
         '<tr class="' + off + '"><th class="r">Cohort</th>' + val(stepOf(p, "cohort"), "rr") + val(stepOf(p, "cohort"), "or") + "</tr>" +
-        '<tr class="' + off + '"><th class="r">Case-control</th>' + val(stepOf(p, "cc"), "rr") + val(stepOf(p, "cc"), "or") + "</tr>" +
+        '<tr class="' + off + '"><th class="r">Case-control</th>' + val(stepOf(p, "cc"), "rr", true) + val(stepOf(p, "cc"), "or") + "</tr>" +
         '<tr class="truth' + off + '"><th class="r">Whole town (the truth)</th>' +
         (st.reveal[p] ? '<td class="fixed">' + r2(target(t, "rr")) + '</td><td class="fixed">' + r2(target(t, "or")) + "</td>"
                       : '<td colspan="2"><button data-reveal="' + p + '">Reveal</button></td>') + "</tr>";

@@ -105,6 +105,9 @@ table.tt td { padding: 0; }
 .cell.out { color: var(--hit); }
 .cell.tot { background: transparent; color: var(--muted); font-weight: 500; }
 .picking .cell:hover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+/* the whole town's numbers, under the picture on the town steps (to read, not to click) */
+#town-table { max-width: 480px; }
+#town-table .cell { display: block; text-align: center; cursor: default; }
 
 .builds { display: grid; gap: 14px; }
 .build { display: grid; gap: 6px; }
@@ -180,6 +183,7 @@ footer { font-size: 13px; color: var(--muted); }
         <h3 id="town-title">The town</h3>
         <canvas id="town" role="img" aria-label="Every person in the town as a square"></canvas>
         <div class="legend" id="town-legend"></div>
+        <div id="town-table"></div>
       </div>
 
       <div class="card" id="work-card" hidden>
@@ -209,14 +213,14 @@ footer { font-size: 13px; color: var(--muted); }
 
   // ---------- the town ----------
   // 10,000 adults; people 0-1999 smoke. Each outcome has fixed case counts, and each study a fixed table
-  // (expected counts, rounded), so every answer on the worksheet is exact.
+  // (a realistic draw, except the lung cancer case-control study's cases, which are all of them), so every answer on the worksheet is fixed.
   // Study tables: a, b = smokers in column 1 / column 2; c, d = non-smokers in column 1 / column 2.
   var POP = 10000, NS = 2000;
   var OUT = {
     cough: {
       name: "a persistent cough", short: "cough", casesS: 1000, casesN: 1600,
-      cohort: { a: 100, b: 100, c: 160, d: 640 },   // 1,000 people at random
-      cc:     { a: 77,  b: 27,  c: 123, d: 173 }    // 200 cases, 200 controls
+      cohort: { a: 104, b: 107, c: 159, d: 630 },   // 1,000 people at random (a realistic draw: 211 smokers, not exactly 200)
+      cc:     { a: 77,  b: 26,  c: 123, d: 174 }    // 200 cases, 200 controls (a realistic draw)
     },
     lung: {
       name: "lung cancer", short: "lung cancer", casesS: 80, casesN: 20,
@@ -251,8 +255,8 @@ footer { font-size: 13px; color: var(--muted); }
   var STEPS = [
     { part: 0, out: "cough", kind: "town", title: "The town",
       text: ["10,000 adults, 2,000 of whom smoke, followed for 20 years. Each square is a person.",
-             "<b>Orange</b> squares developed a persistent cough: 26 in every 100 people."],
-      ask: "Look at the two blocks. Is a cough more common among smokers?" },
+             "<b>Orange</b> squares developed a persistent cough: 26 in every 100 people. The table under the picture gives the numbers."],
+      ask: "From the table: what is the risk of a cough for a smoker, and for a non-smoker?" },
     { part: 0, out: "cough", kind: "cohort", title: "A cohort study",
       text: ["Recruit <b>1,000 people at random</b>. Record who smokes, then follow them for 20 years to see who develops a cough."],
       ask: "Work out the risk ratio and the odds ratio from your study's table." },
@@ -263,7 +267,7 @@ footer { font-size: 13px; color: var(--muted); }
       text: ["What the two studies found, and why."] },
     { part: 1, out: "lung", kind: "town", title: "The town again",
       text: ["The same town, but now the outcome is <b>lung cancer</b>: 1 in every 100 people.",
-             "Orange squares developed lung cancer."],
+             "Orange squares developed lung cancer. The table under the picture gives the numbers."],
       ask: "A cohort of 1,000 people at random: how many of them would you expect to get lung cancer?" },
     { part: 1, out: "lung", kind: "cohort", title: "A cohort study",
       text: ["Recruit <b>1,000 people at random</b> and follow them for 20 years."],
@@ -358,6 +362,17 @@ footer { font-size: 13px; color: var(--muted); }
       $("town-title").textContent = "Who is in your " + (S.kind === "cohort" ? "cohort" : "case-control") + " study";
     }
     $("town-legend").innerHTML = lg;
+    // on the town steps, the whole town's 2x2 table, for students to read numbers from
+    var tw = "";
+    if (!sel) {
+      var v = cells(truth(o));
+      function cell(k, cls) { return '<td><span class="cell ' + (cls || "") + '">' + comma(v[k]) + "</span></td>"; }
+      tw = '<table class="tt"><tr><th></th><th>Got ' + o.short + "</th><th>Didn't</th><th>Total</th></tr>" +
+        '<tr><th class="r">Smokers</th>' + cell("a", "out") + cell("b") + cell("r1", "tot") + "</tr>" +
+        '<tr><th class="r">Non-smokers</th>' + cell("c", "out") + cell("d") + cell("r2", "tot") + "</tr>" +
+        '<tr><th class="r">Total</th>' + cell("c1", "tot") + cell("c2", "tot") + cell("n", "tot") + "</tr></table>";
+    }
+    $("town-table").innerHTML = tw;
   }
 
   // ---------- the study's table and the two calculations ----------
@@ -459,11 +474,11 @@ footer { font-size: 13px; color: var(--muted); }
       return '<p class="lead">A case-control study gets the <b>odds ratio</b> right but not the risk ratio. For a common ' +
         "outcome like a cough, those are different numbers: smokers are <b>2.5 times</b> as likely to get a cough, not 4 times.</p>" +
         resultsTable(0) + prose([
-        "The cohort recruited people at random, so its table is the town in miniature. 100 of its 200 smokers got a cough, " +
-          "a genuine risk of 0.5, and both of its ratios match the truth exactly.",
+        "The cohort recruited people at random, so its table is the town in miniature. 104 of its 211 smokers got a cough, " +
+          "a genuine risk of 0.49, close to the town's 0.5. Chance moved its ratios a little from the truth, but both are close.",
         "The case-control study is different because the researchers chose who to include. Half of its 400 people have a " +
-          "cough, against 26 in 100 in the town. That makes “77 of 104 smokers got a cough” meaningless as a risk: had they " +
-          "taken more controls it would have fallen, fewer and it would have risen. So its risk ratio of 1.78 is wrong.",
+          "cough, against 26 in 100 in the town. That makes “77 of 103 smokers got a cough” meaningless as a risk: had they " +
+          "taken more controls it would have fallen, fewer and it would have risen. So its risk ratio of 1.81 is wrong.",
         "Its odds ratio survives. Choosing how many cases and controls to take scales the two columns of the table up or down, " +
           "and the odds ratio, (a × d) ÷ (b × c), has one number from each column on top and one underneath, so the scaling " +
           "cancels out. That is why a case-control study can always give you an odds ratio, and never a risk ratio.",

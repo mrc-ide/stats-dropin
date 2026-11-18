@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Logistic Lab</title>
+<style>
+/* Three tabs on one made-up serosurvey (200 people aged 1-50; age, bed net, seropositive).
+   A: probability, odds and log-odds on three linked number lines, with their formulas. B: fit the logistic curve
+   with sliders, optionally with a separate (shifted) curve for bed net users. C: the printed glm() output.
+   The app is a tool only: every question is on the printed worksheets. Palette follows weeks 4 and 6. */
+:root {
+  --bg: #F6F8FB;
+  --panel: #FFFFFF;
+  --soft: #EAF1F8;
+  --fg: #1B2533;
+  --muted: #5A6878;
+  --line: #D5DEE9;
+  --ink: #1F3A5F;
+  --accent: #2F6BB0;
+  --bar: #A9C0DA;
+  --hit: #D9822B;
+  --keep: #2E7D32;
+  --miss: #B23A2B;
+  --font-body: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+    --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+  --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); color: var(--ink); line-height: 1.15; }
+.story { margin: 0; max-width: 78ch; font-size: 15.5px; }
+.story b { color: var(--ink); }
+
+nav.steps { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+nav.steps button {
+  font: inherit; font-weight: 600; font-size: 15px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  padding: 10px 12px; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+nav.steps button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.steps .num { font-family: var(--font-num); font-size: 13px; margin-right: 6px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 780px) { .bench { grid-template-columns: minmax(0, 1fr); } .stage { order: -1; } }
+.controls { display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.controls h2 { margin: 0; font-size: 18px; color: var(--ink); }
+.controls p { margin: 0; font-size: 14.5px; color: var(--muted); }
+.controls p b { color: var(--fg); }
+.field { display: grid; gap: 4px; }
+.field > label, .field > .lab { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="number"] {
+  font: inherit; font-family: var(--font-num); font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); width: 100%;
+}
+.sn { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 10px; align-items: center; }
+.inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14.5px; }
+.inline input[type="number"] { width: 90px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button.act {
+  font: inherit; font-size: 14.5px; font-weight: 600; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--panel);
+}
+button.act.ghost { background: transparent; color: var(--accent); }
+button.act[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+button.act:disabled { opacity: 0.35; cursor: default; }
+.seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; justify-self: start; }
+.seg button { font: inherit; font-size: 14px; font-weight: 600; padding: 6px 12px; border: 0; background: transparent; color: var(--accent); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+.seg.code button { font-family: var(--font-num); font-size: 13.5px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14.5px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.divider { border-top: 1px solid var(--line); }
+.eqn { font-family: var(--font-num); font-size: 14px; background: var(--soft); border-radius: 8px; padding: 8px 10px; color: var(--ink); overflow-wrap: anywhere; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.trio .field > label { font-size: 12.5px; }
+
+.stage { display: grid; gap: 12px; min-width: 0; }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 6px; display: grid; gap: 4px; min-width: 0; }
+.chart h3 { margin: 0 4px; font-size: 14px; color: var(--ink); }
+canvas { display: block; width: 100%; height: 340px; }
+#a-canvas { height: 300px; touch-action: none; cursor: ew-resize; }
+canvas.small { height: 240px; }
+@media (max-width: 780px) { canvas { height: 280px; } canvas.small { height: 210px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); padding: 0 4px 4px; }
+.sw { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; }
+.sw.ln { height: 3px; vertical-align: 3px; }
+.sw.dash { height: 0; border-top: 3px dashed; background: none !important; vertical-align: 3px; }
+.sw.dot { width: 10px; border-radius: 50%; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat { background: var(--soft); border-radius: 8px; padding: 9px 12px; display: grid; gap: 1px; min-width: 0; }
+.stat .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { font-family: var(--font-num); font-size: 19px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+table.tt { border-collapse: collapse; width: 100%; max-width: 560px; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+table.tt th, table.tt td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: center; }
+table.tt th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+table.tt th.r { text-align: left; color: var(--ink); font-size: 14px; }
+table.tt td { font-family: var(--font-num); font-weight: 600; color: var(--ink); }
+table.tt td.tot { color: var(--muted); font-weight: 500; }
+@media (max-width: 480px) { table.tt th, table.tt td { padding: 6px 4px; font-size: 13px; } }
+table.tt th.grp { text-align: left; font-size: 13px; padding-top: 12px; }
+pre.rout {
+  margin: 0; font-family: var(--font-num); font-size: 13px; line-height: 1.45; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+}
+footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Stats drop-in · Week 7</span>
+    <h1>Logistic Lab</h1>
+  </header>
+  <p class="story">A malaria serosurvey of <b>200 people aged 1 to 50</b>. For each person we know their <b>age</b>,
+    whether they sleep under a <b>bed net</b>, and whether their blood has antibodies to malaria (<b>seropositive</b>),
+    a sign that they have been infected at some point.</p>
+
+  <nav class="steps" role="tablist" aria-label="Tabs">
+    <button role="tab" id="t-A" aria-controls="p-A" aria-selected="true"><span class="num">A</span>Probability, odds, log-odds</button>
+    <button role="tab" id="t-B" aria-controls="p-B" aria-selected="false"><span class="num">B</span>Fit the curve</button>
+    <button role="tab" id="t-C" aria-controls="p-C" aria-selected="false"><span class="num">C</span>Read the R output</button>
+  </nav>
+
+  <!-- A. Probability, odds, log-odds -->
+  <section class="bench" id="p-A" role="tabpanel" aria-labelledby="t-A">
+    <div class="controls">
+      <h2>Three scales, one value</h2>
+      <p>Drag the marker on any line, or type a value. The other two follow.</p>
+      <div class="trio">
+        <div class="field"><label for="a-p">Probability</label><input type="number" id="a-p" min="0.001" max="0.999" step="0.01"></div>
+        <div class="field"><label for="a-o">Odds</label><input type="number" id="a-o" min="0.001" step="0.1"></div>
+        <div class="field"><label for="a-l">Log-odds</label><input type="number" id="a-l" step="0.1"></div>
+      </div>
+      <p><b>log</b> is the natural log, the same as <b>log()</b> in R.</p>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>One value on three scales: being seropositive</h3>
+        <canvas id="a-canvas" role="img" aria-label="Three number lines: probability, odds and log-odds"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- B. Fit the curve -->
+  <section class="bench" id="p-B" role="tabpanel" aria-labelledby="t-B" hidden>
+    <div class="controls">
+      <h2>Choose the curve</h2>
+      <div class="eqn" id="b-eqn"></div>
+      <div class="field">
+        <label for="b-b0">Intercept</label>
+        <div class="sn"><input type="range" id="b-b0" min="-8" max="3" step="0.01"><input type="number" id="b-b0-num" min="-8" max="3" step="0.01" aria-label="Intercept"></div>
+      </div>
+      <div class="field">
+        <label for="b-b1">Slope (per year of age)</label>
+        <div class="sn"><input type="range" id="b-b1" min="-0.1" max="0.4" step="0.001"><input type="number" id="b-b1-num" min="-0.1" max="0.4" step="0.001" aria-label="Slope"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="b-net">Separate curves for bed net users</label>
+      <div class="field" id="b-net-wrap" hidden>
+        <p>The 200 people are now split into two groups: <b>100 who don't sleep under a bed net</b> (blue dots) and
+          <b>100 who do</b> (green rings). Each group has its own curve.</p>
+        <label for="b-b2">Bed net shift (added to the log-odds)</label>
+        <div class="sn"><input type="range" id="b-b2" min="-3" max="0" step="0.01"><input type="number" id="b-b2-num" min="-3" max="0" step="0.01" aria-label="Bed net shift"></div>
+      </div>
+      <div class="btns">
+        <button class="act" id="b-best">Best fit</button>
+      </div>
+      <div class="divider"></div>
+      <div class="field"><span class="lab">View</span>
+        <div class="seg" id="b-view"><button data-v="p" aria-pressed="true">Probability</button><button data-v="l" aria-pressed="false">Log-odds</button></div>
+      </div>
+      <label class="check"><input type="checkbox" id="b-bands">Proportion seropositive in each 10-year age band</label>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3 id="b-title"></h3>
+        <canvas id="b-canvas" role="img" aria-label="Seropositivity against age with the chosen curve"></canvas>
+        <div class="legend" id="b-legend"></div>
+      </div>
+      <div class="chart">
+        <h3 id="b-table-title"></h3>
+        <div id="b-table" style="padding:0 4px 6px;overflow-x:auto"></div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Log-likelihood of this curve</span><span class="v" id="b-ll"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C. Read the R output -->
+  <section class="bench" id="p-C" role="tabpanel" aria-labelledby="t-C" hidden>
+    <div class="controls">
+      <h2>The best fit, as R prints it</h2>
+      <div class="field"><span class="lab">Model</span>
+        <div class="seg code" id="c-model"><button data-m="age" aria-pressed="true">seropos ~ age</button><button data-m="agenet" aria-pressed="false">seropos ~ age + net</button></div>
+      </div>
+      <p>This is <b>logistic regression</b>: <b>glm()</b> with <b>family = binomial</b> fits a straight line on the
+        log-odds scale, so every estimate below is on the log-odds scale.</p>
+      <p><b>seropos</b> is 1 for seropositive and 0 for seronegative. <b>net</b> is 1 for people who sleep under a bed net
+        and 0 for people who don't.</p>
+      <p id="c-text"></p>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>R output</h3>
+        <pre class="rout" id="c-out"></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>Made-up data. All calculations run in your browser.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- the data ----------
+  // From data/make_dataset.R (seed 480). If the data change, regenerate ROUT below and the worksheet numbers.
+  var AGE = [30,16,39,32,8,19,37,29,39,22,33,1,5,19,48,41,9,22,50,27,7,6,8,22,14,41,44,7,40,16,32,16,14,34,31,31,38,19,30,18,22,7,13,17,17,17,12,40,28,17,2,3,44,25,26,43,37,40,18,42,16,34,2,20,19,31,31,20,24,37,45,21,13,24,9,47,27,43,13,13,49,36,23,34,36,36,13,18,15,8,26,48,18,5,8,32,47,21,43,25,27,7,25,48,17,36,13,14,2,33,34,25,5,38,35,22,39,9,29,30,15,13,46,39,49,37,19,15,2,12,3,15,48,34,28,49,19,44,10,41,25,34,20,22,23,1,3,18,35,49,16,29,5,40,47,8,19,39,34,12,1,44,20,8,21,31,48,28,21,27,16,49,49,50,39,43,1,5,47,20,37,19,6,3,38,46,26,24,27,44,43,35,35,26,36,18,35,33,13,50];
+  var NET = "10010011001101110110110011000100110000111100011100001111001011101101001000110101000000011110000001110111010110100111000010010110101111101010101001111010110101110011010011100011110000011010110011000000".split("").map(Number);
+  var POS = "11011111111001100011000101101111011110000010010110001001110100000010111101011100111111000001101010101011010001000110101100111100000011010101000010001101011001010110011101011111001110001100011111001011".split("").map(Number);
+  var N = AGE.length;
+
+  // summary(glm(...)) as printed by R 4 for this dataset, with data = serosurvey
+  var ROUT = {
+    age: [
+      "Call:",
+      "glm(formula = seropos ~ age, family = binomial, data = serosurvey)",
+      "",
+      "Coefficients:",
+      "            Estimate Std. Error z value Pr(>|z|)    ",
+      "(Intercept) -3.66867    0.52691  -6.963 3.34e-12 ***",
+      "age          0.14988    0.01995   7.513 5.78e-14 ***",
+      "---",
+      "Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1",
+      "",
+      "(Dispersion parameter for binomial family taken to be 1)",
+      "",
+      "    Null deviance: 276.76  on 199  degrees of freedom",
+      "Residual deviance: 168.51  on 198  degrees of freedom",
+      "AIC: 172.51",
+      "",
+      "Number of Fisher Scoring iterations: 5"
+    ],
+    agenet: [
+      "Call:",
+      "glm(formula = seropos ~ age + net, family = binomial, data = serosurvey)",
+      "",
+      "Coefficients:",
+      "            Estimate Std. Error z value Pr(>|z|)    ",
+      "(Intercept) -3.22455    0.54799  -5.884 4.00e-09 ***",
+      "age          0.15707    0.02138   7.347 2.03e-13 ***",
+      "net         -1.22789    0.41313  -2.972  0.00296 ** ",
+      "---",
+      "Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1",
+      "",
+      "(Dispersion parameter for binomial family taken to be 1)",
+      "",
+      "    Null deviance: 276.76  on 199  degrees of freedom",
+      "Residual deviance: 159.01  on 197  degrees of freedom",
+      "AIC: 165.01",
+      "",
+      "Number of Fisher Scoring iterations: 5"
+    ]
+  };
+
+  // ---------- maths ----------
+  function logit(p) { return Math.log(p / (1 - p)); }
+  function expit(x) { return 1 / (1 + Math.exp(-x)); }
+  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+  // the model's predictors for person i: intercept, age and (when bed nets are in the model) net
+  function row(i, withNet) { return withNet ? [1, AGE[i], NET[i]] : [1, AGE[i]]; }
+  function eta(b, i) { var x = row(i, b.length === 3), e = 0; for (var k = 0; k < b.length; k++) e += b[k] * x[k]; return e; }
+  // logistic regression by iteratively reweighted least squares
+  function fitLogit(withNet) {
+    var K = withNet ? 3 : 2, b = [], k, j, i, it;
+    for (k = 0; k < K; k++) b.push(0);
+    for (it = 0; it < 50; it++) {
+      var M = [], v = [];
+      for (k = 0; k < K; k++) { M.push([]); v.push(0); for (j = 0; j < K; j++) M[k].push(0); }
+      for (i = 0; i < N; i++) {
+        var x = row(i, withNet), e = eta(b, i), mu = expit(e), w = mu * (1 - mu), z = e + (POS[i] - mu) / w;
+        for (k = 0; k < K; k++) { v[k] += w * x[k] * z; for (j = 0; j < K; j++) M[k][j] += w * x[k] * x[j]; }
+      }
+      // solve M b = v by Gaussian elimination
+      for (k = 0; k < K; k++) for (j = k + 1; j < K; j++) {
+        var f = M[j][k] / M[k][k];
+        for (var m = k; m < K; m++) M[j][m] -= f * M[k][m];
+        v[j] -= f * v[k];
+      }
+      var nb = [];
+      for (k = K - 1; k >= 0; k--) { var t = v[k]; for (j = k + 1; j < K; j++) t -= M[k][j] * nb[j]; nb[k] = t / M[k][k]; }
+      var change = 0; for (k = 0; k < K; k++) change += Math.abs(nb[k] - b[k]);
+      b = nb;
+      if (change < 1e-12) break;
+    }
+    return b;
+  }
+  function logLik(b) {
+    var ll = 0;
+    for (var i = 0; i < N; i++) {
+      var e = eta(b, i);
+      // log(expit(e)) and log(1 - expit(e)), written to stay finite for large |e|
+      ll += POS[i] ? -Math.log1p(Math.exp(-e)) : -Math.log1p(Math.exp(e));
+    }
+    return ll;
+  }
+  var BEST = { age: fitLogit(false), net: fitLogit(true) };
+
+  // ---------- formatting ----------
+  function f2(v) { return (v < 0 ? "−" : "") + Math.abs(v).toFixed(2); }
+  function f3(v) { return (v < 0 ? "−" : "") + Math.abs(v).toFixed(3); }
+  function sig3(v) { return v >= 1000 ? Math.round(v).toLocaleString("en-GB") : String(+v.toPrecision(3)); }
+
+  // ---------- canvas ----------
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function setup(cv) {
+    var r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    var c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+    return { c: c, w: r.width, h: r.height };
+  }
+  function font(c, size, weight) { c.font = (weight || 400) + " " + size + "px " + css("--font-body"); }
+  // a plot area with x and y ranges; returns the canvas context and the two scale functions
+  function plot(cv, xr, yr, pad) {
+    var g = setup(cv); pad = pad || { l: 52, r: 14, t: 12, b: 40 };
+    g.l = pad.l; g.r = g.w - pad.r; g.t = pad.t; g.b = g.h - pad.b;
+    g.X = function (x) { return g.l + (x - xr[0]) / (xr[1] - xr[0]) * (g.r - g.l); };
+    g.Y = function (y) { return g.b - (y - yr[0]) / (yr[1] - yr[0]) * (g.b - g.t); };
+    return g;
+  }
+  function axes(g, xt, yt, xlab, ylab, yfmt) {
+    var c = g.c;
+    c.strokeStyle = css("--line"); c.lineWidth = 1; c.fillStyle = css("--muted"); font(c, 12);
+    c.textAlign = "right"; c.textBaseline = "middle";
+    yt.forEach(function (y) {
+      var py = Math.round(g.Y(y)) + 0.5;
+      c.beginPath(); c.moveTo(g.l, py); c.lineTo(g.r, py); c.stroke();
+      c.fillText(yfmt ? yfmt(y) : String(y), g.l - 6, py);
+    });
+    c.textAlign = "center"; c.textBaseline = "top";
+    xt.forEach(function (x) { c.fillText(String(x), g.X(x), g.b + 6); });
+    c.strokeStyle = css("--muted"); c.beginPath(); c.moveTo(g.l, g.b + 0.5); c.lineTo(g.r, g.b + 0.5); c.stroke();
+    font(c, 12.5, 600); c.fillStyle = css("--ink");
+    c.fillText(xlab, (g.l + g.r) / 2, g.b + 22);
+    c.save(); c.translate(13, (g.t + g.b) / 2); c.rotate(-Math.PI / 2); c.textBaseline = "middle"; c.fillText(ylab, 0, 0); c.restore();
+  }
+  function curve(g, f, x0, x1, col, width, dash) {
+    var c = g.c, steps = 200;
+    c.save(); c.beginPath(); c.rect(g.l, g.t, g.r - g.l, g.b - g.t); c.clip();
+    c.strokeStyle = col; c.lineWidth = width; c.setLineDash(dash || []); c.beginPath();
+    for (var k = 0; k <= steps; k++) { var x = x0 + (x1 - x0) * k / steps, px = g.X(x), py = g.Y(f(x)); if (k) c.lineTo(px, py); else c.moveTo(px, py); }
+    c.stroke(); c.restore();
+  }
+  function dot(c, x, y, r, fill, stroke) {
+    c.beginPath(); c.arc(x, y, r, 0, 2 * Math.PI);
+    if (fill) { c.fillStyle = fill; c.fill(); }
+    if (stroke) { c.strokeStyle = stroke; c.lineWidth = 2; c.stroke(); }
+  }
+
+  // ---------- tabs ----------
+  var TABS = ["A", "B", "C"], tab = "A";
+  TABS.forEach(function (t) { $("t-" + t).onclick = function () { tab = t; showTab(); }; });
+  function showTab() {
+    TABS.forEach(function (t) { $("t-" + t).setAttribute("aria-selected", t === tab); $("p-" + t).hidden = t !== tab; });
+    draw();
+  }
+  function seg(el, attr, onpick) {
+    el.querySelectorAll("button").forEach(function (b) {
+      b.onclick = function () {
+        el.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); });
+        onpick(b.getAttribute(attr));
+      };
+    });
+  }
+
+  // ---------- A: probability, odds, log-odds ----------
+  // the state is one log-odds value, shown on all three lines
+  var A = { lo: logit(0.2) };
+  var LINES = [
+    { key: "p",  name: "Probability", formula: "p", lo: 0, hi: 1, ticks: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
+      from: function (lo) { return expit(lo); }, to: function (v) { return logit(clamp(v, 0.001, 0.999)); }, fmt: f3 },
+    { key: "o",  name: "Odds", formula: "p / (1 − p)", lo: 0, hi: 10, ticks: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      from: function (lo) { return Math.exp(lo); }, to: function (v) { return Math.log(Math.max(v, 0.001)); }, fmt: sig3 },
+    { key: "l",  name: "Log-odds", formula: "log(p / (1 − p))", lo: -5, hi: 5, ticks: [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
+      from: function (lo) { return lo; }, to: function (v) { return v; }, fmt: f2 }
+  ];
+  var ALIM = 9.2;   // log-odds limit: probabilities from 0.0001 to 0.9999
+  function setLo(lo) { A.lo = clamp(lo, -ALIM, ALIM); drawA(); }
+  function aRows(g) {
+    var top = 30, gap = (g.h - top - 10) / 3;
+    return LINES.map(function (L, k) { return top + gap * k + gap * 0.55; });
+  }
+  function aGeom(cv) { var r = cv.getBoundingClientRect(); return { w: r.width, h: r.height, l: 40, r: r.width - 40 }; }
+  function aX(G, L, v) { return G.l + (clamp(v, L.lo, L.hi) - L.lo) / (L.hi - L.lo) * (G.r - G.l); }
+  function drawA() {
+    LINES.forEach(function (L) {
+      var el = $("a-" + L.key);
+      if (document.activeElement !== el) el.value = L.key === "o" ? +L.from(A.lo).toPrecision(4) : +L.from(A.lo).toFixed(L.key === "p" ? 4 : 3);
+    });
+    if (tab !== "A") return;
+    var cv = $("a-canvas"), g = setup(cv), c = g.c, G = aGeom(cv), rows = aRows(g);
+    var colLine = css("--muted"), colMut = css("--muted"), colInk = css("--ink");
+    LINES.forEach(function (L, k) {
+      var y = rows[k];
+      font(c, 13, 600); c.fillStyle = colInk; c.textAlign = "left"; c.textBaseline = "alphabetic";
+      c.fillText(L.name, G.l, y - 36);
+      var nw = c.measureText(L.name).width;
+      c.font = "500 13px " + css("--font-num"); c.fillStyle = colMut;
+      c.fillText(L.formula, G.l + nw + 10, y - 36);
+      c.strokeStyle = colLine; c.lineWidth = 1.5; c.beginPath(); c.moveTo(G.l, y); c.lineTo(G.r, y); c.stroke();
+      // arrows where the scale carries on beyond the drawn range
+      c.fillStyle = colLine;
+      if (L.key !== "p") { c.beginPath(); c.moveTo(G.r + 10, y); c.lineTo(G.r + 2, y - 5); c.lineTo(G.r + 2, y + 5); c.fill(); }
+      if (L.key === "l") { c.beginPath(); c.moveTo(G.l - 10, y); c.lineTo(G.l - 2, y - 5); c.lineTo(G.l - 2, y + 5); c.fill(); }
+      font(c, 11.5); c.fillStyle = colMut; c.textAlign = "center"; c.textBaseline = "top";
+      L.ticks.forEach(function (t, j) {
+        var x = aX(G, L, t);
+        c.strokeStyle = colLine; c.lineWidth = 1; c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x, y + 4); c.stroke();
+        // on a narrow screen, label every other tick
+        if (G.r - G.l < 360 && j % 2) return;
+        c.fillText(t < 0 ? "−" + (-t) : String(t), x, y + 7);
+      });
+      font(c, 14); c.textBaseline = "middle";
+      if (L.key !== "p") { c.textAlign = "left"; c.fillText("∞", G.r + 13, y); }
+      if (L.key === "l") { c.textAlign = "right"; c.fillText("−∞", G.l - 13, y); }
+      // the value, pinned to the end of the line if it is off the drawn scale
+      var v = L.from(A.lo), x = aX(G, L, v), off = v > L.hi || v < L.lo;
+      dot(c, x, y, 8, css("--accent"));
+      font(c, 12.5, 700); c.fillStyle = css("--accent"); c.textBaseline = "bottom";
+      c.textAlign = x > G.r - 30 ? "right" : x < G.l + 30 ? "left" : "center";
+      c.fillText((off ? "off the scale: " : "") + L.fmt(v), x, y - 11);
+    });
+  }
+  (function () {
+    var cv = $("a-canvas"), drag = null;
+    function at(e) {
+      var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, G = aGeom(cv), rows = aRows({ h: r.height });
+      return { x: x, y: y, G: G, rows: rows };
+    }
+    function move(e, k) {
+      var q = at(e), L = LINES[k], v = L.lo + clamp((q.x - q.G.l) / (q.G.r - q.G.l), 0, 1) * (L.hi - L.lo);
+      setLo(L.to(L.key === "o" ? Math.max(v, 0.01) : v));
+    }
+    cv.addEventListener("pointerdown", function (e) {
+      var q = at(e), best = 0, bd = Infinity;
+      q.rows.forEach(function (y, k) { var d = Math.abs(q.y - y); if (d < bd) { bd = d; best = k; } });
+      drag = best; cv.setPointerCapture(e.pointerId); move(e, drag);
+    });
+    cv.addEventListener("pointermove", function (e) { if (drag != null) move(e, drag); });
+    cv.addEventListener("pointerup", function () { drag = null; });
+    cv.addEventListener("pointercancel", function () { drag = null; });
+  })();
+  LINES.forEach(function (L) {
+    $("a-" + L.key).addEventListener("input", function () {
+      var v = parseFloat(this.value);
+      if (!isFinite(v)) return;
+      if (L.key === "p" && !(v > 0 && v < 1)) return;
+      if (L.key === "o" && !(v > 0)) return;
+      setLo(L.to(v));
+    });
+    $("a-" + L.key).addEventListener("change", function () { drawA(); });
+  });
+
+  // ---------- B: fit the curve ----------
+  // with bed nets on, there are two curves: net users' log-odds are the no-net log-odds plus the bed net shift b2
+  var B = { b0: 0, b1: 0, b2: 0, net: false, view: "p", bands: false };
+  // a bed net can only lower the log-odds (protective), so the shift is capped at 0
+  var CAP = { b2: [-Infinity, 0] };
+  function link(range, num, key) {
+    function set(v) { if (!isFinite(v)) return; if (CAP[key]) v = clamp(v, CAP[key][0], CAP[key][1]); B[key] = v; draw(); }
+    $(range).addEventListener("input", function () { set(parseFloat(this.value)); });
+    $(num).addEventListener("input", function () { set(parseFloat(this.value)); });
+    $(num).addEventListener("change", function () { draw(); });
+  }
+  link("b-b0", "b-b0-num", "b0"); link("b-b1", "b-b1-num", "b1"); link("b-b2", "b-b2-num", "b2");
+  $("b-best").onclick = function () {
+    var b = B.net ? BEST.net : BEST.age;
+    B.b0 = +b[0].toFixed(2); B.b1 = +b[1].toFixed(3); if (B.net) B.b2 = +b[2].toFixed(2);
+    draw();
+  };
+  $("b-net").onchange = function () { B.net = this.checked; draw(); };
+  seg($("b-view"), "data-v", function (v) { B.view = v; draw(); });
+  $("b-bands").onchange = function () { B.bands = this.checked; draw(); };
+  function lo(age, net) { return B.b0 + B.b1 * age + (B.net && net ? B.b2 : 0); }
+  // the curve at five fixed ages, on each scale; with bed nets on, one block of rows per group
+  var TAGES = [10, 20, 30, 40, 50];
+  function ageTable() {
+    var groups = B.net ? [["No net", 0, "var(--accent)"], ["Net", 1, "var(--keep)"]] : [[null, 0]];
+    var h = '<table class="tt"><tr><th class="r">Age</th>' + TAGES.map(function (a) { return "<th>" + a + "</th>"; }).join("") + "</tr>";
+    groups.forEach(function (g) {
+      if (g[0]) h += '<tr><th class="r grp" colspan="' + (TAGES.length + 1) + '" style="color:' + g[2] + '">' + g[0] + "</th></tr>";
+      [["Probability", function (l) { return f3(expit(l)); }], ["Odds", function (l) { var o = Math.exp(l); return o >= 1000 ? sig3(o) : o.toPrecision(3); }], ["Log-odds", f2]].forEach(function (r) {
+        h += '<tr><th class="r">' + r[0] + "</th>" + TAGES.map(function (a) { return "<td>" + r[1](lo(a, g[1])) + "</td>"; }).join("") + "</tr>";
+      });
+    });
+    return h + "</table>";
+  }
+  function drawB() {
+    function sync(id, v) { var el = $(id); if (document.activeElement !== el) el.value = v; }
+    sync("b-b0", B.b0); sync("b-b0-num", B.b0); sync("b-b1", B.b1); sync("b-b1-num", B.b1); sync("b-b2", B.b2); sync("b-b2-num", B.b2);
+    $("b-net-wrap").hidden = !B.net;
+    function term(v, d) { var t = d === 2 ? f2(v) : f3(v); return v < 0 ? "(" + t + ")" : t; }
+    $("b-eqn").innerHTML = "log-odds = " + f2(B.b0) + " + " + term(B.b1, 3) + " × age" + (B.net ? " + " + term(B.b2, 2) + " × net" : "");
+    $("b-ll").textContent = logLik(B.net ? [B.b0, B.b1, B.b2] : [B.b0, B.b1]).toFixed(2).replace("-", "−");
+    $("b-table-title").textContent = B.net ? "Both curves at five ages" : "Your curve at five ages";
+    $("b-table").innerHTML = ageTable();
+    if (tab !== "B") return;
+    var cv = $("b-canvas"), pv = B.view === "p", c, i;
+    var g = pv ? plot(cv, [0, 52], [-0.04, 1.04]) : plot(cv, [0, 52], [-6.5, 6.5]);
+    c = g.c;
+    $("b-title").textContent = (pv ? "Probability" : "Log-odds") + " of being seropositive, by age" + (B.net ? ": no net and net" : "");
+    function fx(net) { return function (x) { var l = lo(x, net); return pv ? expit(l) : l; }; }
+    var colNo = css("--accent"), colNet = css("--keep");
+    if (pv) axes(g, [0, 10, 20, 30, 40, 50], [0, 0.25, 0.5, 0.75, 1], "Age (years)", "Probability", function (y) { return String(y); });
+    else axes(g, [0, 10, 20, 30, 40, 50], [-6, -4, -2, 0, 2, 4, 6], "Age (years)", "Log-odds", function (y) { return y < 0 ? "−" + (-y) : String(y); });
+    // the people, at their exact ages: seropositive at 1, seronegative at 0 (on the log-odds view, tick marks at the
+    // top and bottom edges). People of the same age overlap, so darker means more people. With bed nets on, no-net
+    // people are blue dots and net users green rings; on the log-odds view their ticks sit in separate strips.
+    for (i = 0; i < N; i++) {
+      var px = g.X(AGE[i]), ring = B.net && NET[i], col = !B.net ? css("--ink") : ring ? colNet : colNo;
+      if (pv) {
+        c.globalAlpha = ring ? 0.5 : 0.3;
+        if (ring) { c.beginPath(); c.arc(px, g.Y(POS[i]), 4, 0, 2 * Math.PI); c.strokeStyle = col; c.lineWidth = 1.5; c.stroke(); }
+        else dot(c, px, g.Y(POS[i]), 4, col);
+      } else {
+        c.globalAlpha = 0.35;
+        var e0 = ring ? 10 : 0, yy = POS[i] ? g.t + e0 : g.b - e0;
+        c.strokeStyle = col; c.lineWidth = 2; c.beginPath(); c.moveTo(px, yy); c.lineTo(px, yy + (POS[i] ? 8 : -8)); c.stroke();
+      }
+    }
+    c.globalAlpha = 1;
+    curve(g, fx(0), 0, 52, colNo, 3);
+    if (B.net) curve(g, fx(1), 0, 52, colNet, 3);
+    // age-band proportions: everyone, or each group separately when bed nets are on
+    if (B.bands) (B.net ? [0, 1] : [null]).forEach(function (grp) {
+      [1, 11, 21, 31, 41].forEach(function (a0) {
+        var n = 0, k = 0;
+        for (var i = 0; i < N; i++) if (AGE[i] >= a0 && AGE[i] <= a0 + 9 && (grp === null || NET[i] === grp)) { n++; k += POS[i]; }
+        // a band at 0% or 100% has log-odds of minus or plus infinity: show it as a hollow square at the edge
+        var p = k / n, inf = !pv && (p === 0 || p === 1), y = pv ? p : inf ? (p ? 6.2 : -6.2) : logit(p), xm = g.X(a0 + 4.5);
+        var colB = grp === null ? css("--ink") : grp ? colNet : colNo;
+        c.fillStyle = css("--panel"); c.fillRect(xm - 7, g.Y(y) - 7, 14, 14);
+        if (inf) { c.strokeStyle = colB; c.lineWidth = 2; c.strokeRect(xm - 5, g.Y(y) - 5, 10, 10); }
+        else { c.fillStyle = colB; c.fillRect(xm - 5, g.Y(y) - 5, 10, 10); }
+      });
+    });
+    var lg;
+    if (!B.net) {
+      lg = '<span><span class="sw dot" style="background:var(--ink);opacity:0.5"></span>a person (seropositive at 1, seronegative at 0)</span>' +
+        '<span><span class="sw ln" style="background:var(--accent)"></span>your curve</span>';
+      if (B.bands) lg += '<span><span class="sw" style="background:var(--ink);width:10px"></span>proportion seropositive in each 10-year age band</span>';
+    } else {
+      lg = '<span><span class="sw dot" style="background:var(--accent);opacity:0.6"></span><span class="sw ln" style="background:var(--accent)"></span>no net: people and curve</span>' +
+        '<span><span class="sw dot" style="background:none;border:1.5px solid var(--keep)"></span><span class="sw ln" style="background:var(--keep)"></span>net: people and curve</span>' +
+        '<span>people: seropositive at 1, seronegative at 0</span>';
+      if (B.bands) lg += '<span><span class="sw" style="background:var(--muted);width:10px"></span>proportion seropositive in each 10-year age band, by group</span>';
+    }
+    $("b-legend").innerHTML = lg;
+  }
+
+  // ---------- C: read the R output ----------
+  var C = { model: "age" };
+  seg($("c-model"), "data-m", function (m) { C.model = m; draw(); });
+  function drawC() {
+    $("c-out").textContent = ROUT[C.model].join("\n");
+    $("c-text").textContent = C.model === "age" ? "Tab B's best fit with one curve." : "Tab B's best fit with separate curves for bed net users.";
+  }
+
+  function draw() { drawA(); drawB(); drawC(); }
+  var rt;
+  window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(draw, 60); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  showTab();
+})();
+</script>
+</body>
+</html>

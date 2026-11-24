@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Survival Lab</title>
+<style>
+/* Four tabs on one made-up reinfection study (100 people treated for malaria, enrolled from day 0 to day 300, followed
+   until reinfection or the study stops on day 365; half sleep under a bed net).
+   A: censoring, with a movable stop line and the true delays revealed. B: the Kaplan-Meier curve. C: Kaplan-Meier by
+   bed net, with the Cox model's curves as an option. D: the printed survfit() and coxph() output.
+   The app is a tool only: every question is on the printed worksheet. Palette follows weeks 4, 6 and 7. */
+:root {
+  --bg: #F6F8FB;
+  --panel: #FFFFFF;
+  --soft: #EAF1F8;
+  --fg: #1B2533;
+  --muted: #5A6878;
+  --line: #D5DEE9;
+  --ink: #1F3A5F;
+  --accent: #2F6BB0;
+  --bar: #A9C0DA;
+  --hit: #D9822B;
+  --keep: #2E7D32;
+  --miss: #B23A2B;
+  --alt: #7B4FA0;
+  --font-body: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+    --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66; --alt: #B992DD;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+  --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66; --alt: #B992DD;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); color: var(--ink); line-height: 1.15; }
+.story { margin: 0; max-width: 78ch; font-size: 15.5px; }
+.story b { color: var(--ink); }
+
+nav.steps { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+nav.steps button {
+  font: inherit; font-weight: 600; font-size: 15px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  padding: 10px 12px; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+nav.steps button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.steps .num { font-family: var(--font-num); font-size: 13px; margin-right: 6px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 780px) { .bench { grid-template-columns: minmax(0, 1fr); } .stage { order: -1; } }
+.controls { display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.controls h2 { margin: 0; font-size: 18px; color: var(--ink); }
+.controls p { margin: 0; font-size: 14.5px; color: var(--muted); }
+.controls p b { color: var(--fg); }
+.field { display: grid; gap: 4px; }
+.field > label, .field > .lab { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="number"] {
+  font: inherit; font-family: var(--font-num); font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); width: 100%;
+}
+.sn { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 10px; align-items: center; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button.act {
+  font: inherit; font-size: 14.5px; font-weight: 600; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--panel);
+}
+.seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; justify-self: start; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 14px; font-weight: 600; padding: 6px 12px; border: 0; background: transparent; color: var(--accent); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+.seg.code { display: grid; }
+.seg.code button { font-family: var(--font-num); font-size: 13px; text-align: left; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 14.5px; cursor: pointer; line-height: 1.35; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; margin: 0; }
+.check .sw { margin-top: 4px; }
+.checks { display: grid; gap: 8px; }
+.divider { border-top: 1px solid var(--line); }
+.eqn { font-family: var(--font-num); font-size: 14px; background: var(--soft); border-radius: 8px; padding: 8px 10px; color: var(--ink); overflow-wrap: anywhere; }
+
+.stage { display: grid; gap: 12px; min-width: 0; }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 6px; display: grid; gap: 4px; min-width: 0; }
+.chart h3 { margin: 0 4px; font-size: 14px; color: var(--ink); }
+canvas { display: block; width: 100%; height: 340px; }
+#a-tl { height: 400px; touch-action: none; }
+#a-tl.drag, #b-canvas, #c-canvas { cursor: ew-resize; }
+#b-canvas, #c-canvas { touch-action: none; }
+#a-sv { height: 290px; }
+@media (max-width: 780px) { canvas { height: 280px; } #a-tl { height: 360px; } #a-sv { height: 250px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); padding: 0 4px 4px; }
+.sw { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; flex: none; }
+.sw.ln { height: 3px; vertical-align: 3px; }
+.sw.band { height: 7px; vertical-align: 1px; }
+.sw.dash { height: 0; border-top: 2px dashed; background: none !important; vertical-align: 3px; }
+.sw.dot { width: 10px; border-radius: 50%; }
+.sw.ring { width: 10px; border-radius: 50%; background: none !important; border: 2px solid; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat { background: var(--soft); border-radius: 8px; padding: 9px 12px; display: grid; gap: 1px; min-width: 0; }
+.stat .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { font-family: var(--font-num); font-size: 19px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+table.tt { border-collapse: collapse; width: 100%; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+table.tt th, table.tt td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: center; }
+table.tt th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+table.tt th.r { text-align: left; color: var(--ink); font-size: 14px; }
+table.tt td { font-family: var(--font-num); font-weight: 600; color: var(--ink); }
+table.tt td.m { color: var(--muted); font-weight: 500; }
+table.tt th.grp { text-align: left; font-size: 13px; padding-top: 12px; }
+@media (max-width: 480px) { table.tt th, table.tt td { padding: 6px 4px; font-size: 13px; } }
+.scroll { max-height: 330px; overflow: auto; padding: 0 4px 6px; }
+.scroll table.tt th { position: sticky; top: 0; background: var(--panel); }
+pre.rout {
+  margin: 0; font-family: var(--font-num); font-size: 13px; line-height: 1.45; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+}
+footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Stats drop-in · Week 8</span>
+    <h1>Survival Lab</h1>
+  </header>
+  <p class="story">A study of <b>malaria reinfection</b> in <b>100 people</b>. Each person is treated, which clears the
+    parasites, and joins the study that day. People join steadily from <b>day 0 to day 300</b>. Each is followed until
+    they are <b>reinfected</b> or until the <b>study stops on day 365</b>. Half sleep under a <b>bed net</b>.
+    How long does it take to be reinfected?</p>
+
+  <nav class="steps" role="tablist" aria-label="Tabs">
+    <button role="tab" id="t-A" aria-controls="p-A" aria-selected="true"><span class="num">A</span>Censoring</button>
+    <button role="tab" id="t-B" aria-controls="p-B" aria-selected="false"><span class="num">B</span>Kaplan-Meier</button>
+    <button role="tab" id="t-C" aria-controls="p-C" aria-selected="false"><span class="num">C</span>Hazard ratio</button>
+    <button role="tab" id="t-D" aria-controls="p-D" aria-selected="false"><span class="num">D</span>Read the R output</button>
+  </nav>
+
+  <!-- A. Censoring -->
+  <section class="bench" id="p-A" role="tabpanel" aria-labelledby="t-A">
+    <div class="controls">
+      <h2>When does the study stop?</h2>
+      <div class="field">
+        <label for="a-stop">Study stops on day</label>
+        <div class="sn"><input type="range" id="a-stop" min="60" max="1080" step="1"><input type="number" id="a-stop-num" min="60" max="1080" step="1" aria-label="Study stops on day"></div>
+      </div>
+      <p>The real study stops on <b>day 365</b>. You can also drag the stop line on the plot.</p>
+      <div class="field"><span class="lab">Line people up by</span>
+        <div class="seg" id="a-view"><button data-v="cal" aria-pressed="true">Calendar day</button><button data-v="since" aria-pressed="false">Days since treatment</button></div>
+      </div>
+      <label class="check"><input type="checkbox" id="a-future">Show what happens after the study stops</label>
+      <p>Someone still free of malaria when the study stops is <b>censored</b>: their delay is longer than their
+        follow-up so far, but we don't know by how much.</p>
+      <div class="divider"></div>
+      <div class="field"><span class="lab">Ways to estimate the delay</span></div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="a-m1" checked><span class="sw ln" style="background:var(--hit)"></span><span>1. Use only the people reinfected so far</span></label>
+        <label class="check"><input type="checkbox" id="a-m2" checked><span class="sw ln" style="background:var(--miss)"></span><span>2. Use everyone, and count people still free as never reinfected</span></label>
+        <label class="check"><input type="checkbox" id="a-m3"><span class="sw ln" style="background:var(--alt)"></span><span>3. Use everyone, and treat follow-up so far as the delay</span></label>
+        <label class="check"><input type="checkbox" id="a-truth"><span class="sw band" style="background:var(--bar)"></span><span>The truth: everyone followed until reinfected</span></label>
+      </div>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3 id="a-tl-title"></h3>
+        <canvas id="a-tl" role="img" aria-label="One line per person, from treatment until reinfection or the end of the study"></canvas>
+        <div class="legend" id="a-tl-legend"></div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Joined by the stop</span><span class="v" id="a-n"></span></div>
+        <div class="stat"><span class="k">Reinfected</span><span class="v" id="a-ev"></span></div>
+        <div class="stat"><span class="k">Still free (censored)</span><span class="v" id="a-cens"></span></div>
+      </div>
+      <div class="chart">
+        <h3>Proportion still free of malaria, by days since treatment</h3>
+        <canvas id="a-sv" role="img" aria-label="Estimated proportion still free of malaria against days since treatment"></canvas>
+        <div id="a-table" style="padding:0 4px 6px;overflow-x:auto"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B. Kaplan-Meier -->
+  <section class="bench" id="p-B" role="tabpanel" aria-labelledby="t-B" hidden>
+    <div class="controls">
+      <h2>The Kaplan-Meier curve</h2>
+      <p>The study as it is when it stops on day 365. Kaplan-Meier uses everyone, for as long as they were followed.</p>
+      <p>On any day, the people <b>at risk</b> are those still free and still being followed. On each day with a
+        reinfection, the <b>proportion surviving the day</b> is 1 − reinfected / at risk, and the curve (the
+        <b>cumulative survival</b>, S(t)) is multiplied by it. Survival here means staying free of malaria.</p>
+      <p>A censored person counts as at risk up to their last day of follow-up, then leaves without making the curve
+        drop.</p>
+      <label class="check"><input type="checkbox" id="b-ticks" checked>Mark censored people on the curve</label>
+      <div class="field">
+        <label for="b-day">Reading line: day</label>
+        <div class="sn"><input type="range" id="b-day" min="0" max="365" step="1"><input type="number" id="b-day-num" min="0" max="365" step="1" aria-label="Reading line: day"></div>
+      </div>
+      <p>You can also drag the reading line on the plot.</p>
+      <div class="divider"></div>
+      <div class="field"><span class="lab">Compare with</span></div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="b-truth"><span class="sw band" style="background:var(--bar)"></span><span>The truth</span></label>
+        <label class="check"><input type="checkbox" id="b-m1"><span class="sw ln" style="background:var(--hit)"></span><span>1. Only the people reinfected</span></label>
+        <label class="check"><input type="checkbox" id="b-m2"><span class="sw ln" style="background:var(--miss)"></span><span>2. People still free as never reinfected</span></label>
+        <label class="check"><input type="checkbox" id="b-m3"><span class="sw ln" style="background:var(--alt)"></span><span>3. Follow-up so far as the delay</span></label>
+      </div>
+      <div class="divider"></div>
+      <label class="check"><input type="checkbox" id="b-calc">Show the calculation</label>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>Kaplan-Meier estimate of the proportion still free of malaria</h3>
+        <canvas id="b-canvas" role="img" aria-label="Kaplan-Meier curve"></canvas>
+        <div class="legend" id="b-legend"></div>
+        <div id="b-risk" style="padding:0 4px 6px;overflow-x:auto"></div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Day</span><span class="v" id="b-r-day"></span></div>
+        <div class="stat"><span class="k">Cumulative survival S(t)</span><span class="v" id="b-r-s"></span></div>
+        <div class="stat"><span class="k">Still at risk</span><span class="v" id="b-r-n"></span></div>
+      </div>
+      <div class="chart" id="b-calc-wrap" hidden>
+        <h3>The calculation, one row per day when someone was reinfected or censored</h3>
+        <div class="scroll" id="b-calc-table"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C. Hazard ratio -->
+  <section class="bench" id="p-C" role="tabpanel" aria-labelledby="t-C" hidden>
+    <div class="controls">
+      <h2>Bed nets and the hazard</h2>
+      <p>A Kaplan-Meier curve for each group: the <b>50 people who don't sleep under a bed net</b> (blue) and the
+        <b>50 who do</b> (green).</p>
+      <p>The <b>hazard</b> is the rate of reinfection among people still free: roughly, the chance of being reinfected
+        tomorrow if you haven't been yet.</p>
+      <p>A <b>Cox model</b> sums up the difference between the groups in one number, the <b>hazard ratio (HR)</b>:
+        at every time, the hazard for net users is the hazard for non-users multiplied by the HR.</p>
+      <p>The <b>dashed green line</b> is the no-net curve with every day's reinfection rate multiplied by the HR. On each
+        day, proportion surviving = 1 − HR × reinfected / at risk, using the people without a net.</p>
+      <div class="field">
+        <label for="c-hr">Hazard ratio, net vs no net</label>
+        <div class="sn"><input type="range" id="c-hr" min="0.1" max="1.5" step="0.01"><input type="number" id="c-hr-num" min="0.1" max="1.5" step="0.01" aria-label="Hazard ratio"></div>
+      </div>
+      <div class="btns"><button class="act" id="c-best">R's Cox estimate</button></div>
+      <div class="divider"></div>
+      <div class="field">
+        <label for="c-day">Reading line: day</label>
+        <div class="sn"><input type="range" id="c-day" min="0" max="365" step="1"><input type="number" id="c-day-num" min="0" max="365" step="1" aria-label="Reading line: day"></div>
+      </div>
+      <p>You can also drag the reading line on the plot.</p>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>Proportion still free of malaria, by bed net use</h3>
+        <canvas id="c-canvas" role="img" aria-label="Kaplan-Meier curves by bed net use, with the no-net curve scaled by the hazard ratio"></canvas>
+        <div class="legend" id="c-legend"></div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Day</span><span class="v" id="c-r-day"></span></div>
+        <div class="stat"><span class="k">No net: still free</span><span class="v" id="c-r-0"></span></div>
+        <div class="stat"><span class="k">No net × HR: still free</span><span class="v" id="c-r-x"></span></div>
+        <div class="stat"><span class="k">Net: still free</span><span class="v" id="c-r-1"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- D. Read the R output -->
+  <section class="bench" id="p-D" role="tabpanel" aria-labelledby="t-D" hidden>
+    <div class="controls">
+      <h2>The study in R</h2>
+      <div class="field"><span class="lab">Command</span>
+        <div class="seg code" id="d-model">
+          <button data-m="km" aria-pressed="true">survfit(Surv(time, reinfected) ~ 1)</button>
+          <button data-m="kmnet" aria-pressed="false">survfit(Surv(time, reinfected) ~ net)</button>
+          <button data-m="cox" aria-pressed="false">summary(coxph(Surv(time, reinfected) ~ net))</button>
+        </div>
+      </div>
+      <p><b>time</b> is each person's follow-up in days, and <b>reinfected</b> is 1 if it ended in reinfection and 0 if it
+        was censored. <b>Surv(time, reinfected)</b> pairs the two. <b>net</b> is 1 for people who sleep under a bed net
+        and 0 for people who don't.</p>
+      <p id="d-text"></p>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>R output</h3>
+        <pre class="rout" id="d-out"></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>Made-up data. All calculations run in your browser.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- the data ----------
+  // From data/make_dataset.R (seed 822), one entry per person in order of joining. DELAY is the true delay from
+  // treatment to reinfection, known only because the data are simulated. If the data change, regenerate ROUT below and
+  // the worksheet numbers.
+  var NET = "1101000101100111010100011001000100111100110000010010111110001100110111101010000110011011110110010001".split("").map(Number);
+  var ENTRY = [3,5,6,10,13,14,18,21,23,30,30,39,43,50,50,54,56,62,70,80,81,81,85,85,92,93,93,98,98,105,111,113,120,121,129,129,130,134,136,144,144,147,148,151,154,159,165,166,171,171,177,180,181,181,183,183,185,185,187,202,206,206,207,211,215,216,222,227,230,230,235,238,239,245,245,247,251,252,252,253,255,256,259,261,267,268,270,270,271,271,272,274,281,281,281,282,282,290,294,299];
+  var DELAY = [209,95,72,296,106,5,18,102,118,226,43,52,115,374,142,39,136,129,54,211,33,312,188,450,279,20,32,170,89,13,110,80,184,237,418,177,404,274,24,14,281,378,106,156,41,243,239,141,103,237,136,189,165,96,162,549,60,98,213,115,24,299,156,201,84,375,41,83,279,461,233,169,165,159,141,173,93,244,54,63,181,167,411,412,175,104,392,100,232,187,507,773,49,143,63,156,303,209,63,91];
+  var N = NET.length, STOP = 365;
+
+  // survfit() and summary(coxph()) as printed by R 4.4 (survival 3.7) for data/reinfection.csv, with data = reinfection
+  var ROUT = {
+    km: [
+      "Call: survfit(formula = Surv(time, reinfected) ~ 1, data = reinfection)",
+      "",
+      "       n events median 0.95LCL 0.95UCL",
+      "[1,] 100     56    156     118     188"
+    ],
+    kmnet: [
+      "Call: survfit(formula = Surv(time, reinfected) ~ net, data = reinfection)",
+      "",
+      "       n events median 0.95LCL 0.95UCL",
+      "net=0 50     32    115      98     184",
+      "net=1 50     24    177     142      NA"
+    ],
+    cox: [
+      "Call:",
+      "coxph(formula = Surv(time, reinfected) ~ net, data = reinfection)",
+      "",
+      "  n= 100, number of events= 56 ",
+      "",
+      "       coef exp(coef) se(coef)      z Pr(>|z|)  ",
+      "net -0.6921    0.5005   0.2775 -2.494   0.0126 *",
+      "---",
+      "Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1",
+      "",
+      "    exp(coef) exp(-coef) lower .95 upper .95",
+      "net    0.5005      1.998    0.2905    0.8623",
+      "",
+      "Concordance= 0.599  (se = 0.035 )",
+      "Likelihood ratio test= 6.35  on 1 df,   p=0.01",
+      "Wald test            = 6.22  on 1 df,   p=0.01",
+      "Score (logrank) test = 6.45  on 1 df,   p=0.01"
+    ]
+  };
+
+  // ---------- maths ----------
+  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+  // what a study that stops on day s sees: everyone who has joined, with their follow-up time and whether it ended in
+  // reinfection (ev = 1) or censoring (ev = 0)
+  function observe(s) {
+    var out = [];
+    for (var i = 0; i < N; i++) if (ENTRY[i] < s) {
+      var fu = s - ENTRY[i];
+      out.push({ i: i, time: Math.min(DELAY[i], fu), ev: DELAY[i] <= fu ? 1 : 0, net: NET[i] });
+    }
+    return out;
+  }
+  var STUDY = observe(STOP);
+  // a survival curve that drops by 1/denom at each of the given times: { t, S } after each drop
+  function drops(times, denom) {
+    var t = times.slice().sort(function (a, b) { return a - b; }), pts = [], S = 1;
+    t.forEach(function (x) {
+      S -= 1 / denom;
+      if (pts.length && pts[pts.length - 1].t === x) pts[pts.length - 1].S = S; else pts.push({ t: x, S: S });
+    });
+    return pts;
+  }
+  // Kaplan-Meier: one row per distinct time, with the numbers at risk, reinfected and censored on that day
+  function kmTable(obs) {
+    var ts = obs.map(function (o) { return o.time; }).sort(function (a, b) { return a - b; }), rows = [], S = 1;
+    ts.forEach(function (t, k) {
+      if (k && ts[k - 1] === t) return;
+      var n = 0, d = 0, c = 0;
+      obs.forEach(function (o) { if (o.time >= t) n++; if (o.time === t) { if (o.ev) d++; else c++; } });
+      S *= 1 - d / n;
+      rows.push({ t: t, n: n, d: d, c: c, S: S });
+    });
+    return rows;
+  }
+  function kmCurve(obs) {
+    var rows = kmTable(obs);
+    return { pts: rows.filter(function (r) { return r.d; }).map(function (r) { return { t: r.t, S: r.S }; }),
+             cens: rows.filter(function (r) { return r.c; }).map(function (r) { return { t: r.t, S: r.S, c: r.c }; }),
+             end: rows.length ? rows[rows.length - 1].t : 0, rows: rows };
+  }
+  // the four estimates for a study that stops on day s, plus the truth
+  function estimates(s) {
+    var obs = observe(s), n = obs.length, closed = obs.filter(function (o) { return o.ev; });
+    var cd = closed.map(function (o) { return o.time; });
+    var tmax = obs.reduce(function (m, o) { return Math.max(m, o.time); }, 0);
+    return {
+      obs: obs, n: n, ev: closed.length,
+      truth: { pts: drops(DELAY, N), end: Math.max.apply(null, DELAY) },
+      m1: { pts: drops(cd, Math.max(1, closed.length)), end: cd.length ? Math.max.apply(null, cd) : 0 },
+      m2: { pts: drops(cd, Math.max(1, n)), end: tmax },
+      m3: { pts: drops(obs.map(function (o) { return o.time; }), Math.max(1, n)), end: tmax },
+      km: kmCurve(obs)
+    };
+  }
+  function Sat(pts, t) { var S = 1; for (var k = 0; k < pts.length && pts[k].t <= t; k++) S = pts[k].S; return S; }
+  // the median, by R's rule: the first time the curve reaches 0.5, or halfway to the next drop if it sits at exactly 0.5
+  function median(pts) {
+    for (var k = 0; k < pts.length; k++) if (pts[k].S <= 0.5 + 1e-9) {
+      if (Math.abs(pts[k].S - 0.5) < 1e-9 && k + 1 < pts.length) return (pts[k].t + pts[k + 1].t) / 2;
+      return pts[k].t;
+    }
+    return null;
+  }
+  function atRisk(obs, t) { var n = 0; obs.forEach(function (o) { if (o.time >= t) n++; }); return n; }
+
+  // ---------- formatting ----------
+  function dayFmt(v) { return v == null ? "not reached" : (Math.round(v * 2) / 2) + " days"; }
+
+  // ---------- canvas ----------
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function setup(cv) {
+    var r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    var c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+    return { c: c, w: r.width, h: r.height };
+  }
+  function font(c, size, weight) { c.font = (weight || 400) + " " + size + "px " + css("--font-body"); }
+  // a plot area with x and y ranges; returns the canvas context and the two scale functions
+  function plot(cv, xr, yr, pad) {
+    var g = setup(cv); pad = pad || { l: 52, r: 14, t: 12, b: 40 };
+    g.l = pad.l; g.r = g.w - pad.r; g.t = pad.t; g.b = g.h - pad.b;
+    g.X = function (x) { return g.l + (x - xr[0]) / (xr[1] - xr[0]) * (g.r - g.l); };
+    g.Y = function (y) { return g.b - (y - yr[0]) / (yr[1] - yr[0]) * (g.b - g.t); };
+    return g;
+  }
+  function axes(g, xt, yt, xlab, ylab, yfmt) {
+    var c = g.c;
+    c.strokeStyle = css("--line"); c.lineWidth = 1; c.fillStyle = css("--muted"); font(c, 12);
+    c.textAlign = "right"; c.textBaseline = "middle";
+    yt.forEach(function (y) {
+      var py = Math.round(g.Y(y)) + 0.5;
+      c.beginPath(); c.moveTo(g.l, py); c.lineTo(g.r, py); c.stroke();
+      c.fillText(yfmt ? yfmt(y) : String(y), g.l - 6, py);
+    });
+    c.textAlign = "center"; c.textBaseline = "top";
+    xt.forEach(function (x) { c.fillText(String(x), g.X(x), g.b + 6); });
+    c.strokeStyle = css("--muted"); c.beginPath(); c.moveTo(g.l, g.b + 0.5); c.lineTo(g.r, g.b + 0.5); c.stroke();
+    font(c, 12.5, 600); c.fillStyle = css("--ink");
+    c.fillText(xlab, (g.l + g.r) / 2, g.b + 22);
+    c.save(); c.translate(13, (g.t + g.b) / 2); c.rotate(-Math.PI / 2); c.textBaseline = "middle"; c.fillText(ylab, 0, 0); c.restore();
+  }
+  // a step curve from { t, S } points, starting at 1 on day 0 and carried flat to the day `end`
+  function steps(g, pts, end, col, width, opts) {
+    opts = opts || {};
+    var c = g.c, S = 1;
+    c.save(); c.beginPath(); c.rect(g.l, g.t, g.r - g.l, g.b - g.t); c.clip();
+    c.strokeStyle = col; c.lineWidth = width; c.setLineDash(opts.dash || []); c.globalAlpha = opts.alpha || 1;
+    c.lineJoin = "round"; c.lineCap = opts.cap || "butt";
+    c.beginPath(); c.moveTo(g.X(0), g.Y(1));
+    pts.forEach(function (p) { if (p.t > end) return; c.lineTo(g.X(p.t), g.Y(S)); c.lineTo(g.X(p.t), g.Y(p.S)); S = p.S; });
+    c.lineTo(g.X(end), g.Y(S));
+    c.stroke(); c.restore();
+  }
+  function dot(c, x, y, r, fill, stroke, lw) {
+    c.beginPath(); c.arc(x, y, r, 0, 2 * Math.PI);
+    if (fill) { c.fillStyle = fill; c.fill(); }
+    if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw || 1.5; c.stroke(); }
+  }
+  // the estimates in a fixed order, with their colours and names
+  var METHODS = [
+    { key: "truth", col: "--bar", name: "The truth", short: "The truth" },
+    { key: "m1", col: "--hit", name: "1. Only the people reinfected", short: "1. Reinfected only" },
+    { key: "m2", col: "--miss", name: "2. People still free as never reinfected", short: "2. Free = never" },
+    { key: "m3", col: "--alt", name: "3. Follow-up so far as the delay", short: "3. Follow-up = delay" }
+  ];
+  function drawMethod(g, m, est) {
+    var e = est[m.key];
+    if (m.key === "truth") steps(g, e.pts, e.end, css("--bar"), 7, { alpha: 0.9, cap: "round" });
+    else steps(g, e.pts, e.end, css(m.col), 2.2);
+  }
+
+  // ---------- tabs ----------
+  var TABS = ["A", "B", "C", "D"], tab = "A";
+  TABS.forEach(function (t) { $("t-" + t).onclick = function () { tab = t; showTab(); }; });
+  function showTab() {
+    TABS.forEach(function (t) { $("t-" + t).setAttribute("aria-selected", t === tab); $("p-" + t).hidden = t !== tab; });
+    draw();
+  }
+  function seg(el, attr, onpick) {
+    el.querySelectorAll("button").forEach(function (b) {
+      b.onclick = function () {
+        el.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); });
+        onpick(b.getAttribute(attr));
+      };
+    });
+  }
+  function sync(id, v) { var el = $(id); if (document.activeElement !== el) el.value = v; }
+
+  // ---------- A: censoring ----------
+  var A = { stop: STOP, view: "cal", future: false, show: { truth: false, m1: true, m2: true, m3: false } };
+  var CAL_MAX = 1080, SINCE_MAX = 800, aGeom = null;
+  function setStop(v) { if (!isFinite(v)) return; A.stop = Math.round(clamp(v, 60, CAL_MAX)); draw(); }
+  $("a-stop").addEventListener("input", function () { setStop(parseFloat(this.value)); });
+  $("a-stop-num").addEventListener("input", function () { setStop(parseFloat(this.value)); });
+  $("a-stop-num").addEventListener("change", function () { draw(); });
+  seg($("a-view"), "data-v", function (v) { A.view = v; draw(); });
+  $("a-future").onchange = function () { A.future = this.checked; draw(); };
+  METHODS.forEach(function (m) { $("a-" + m.key).onchange = function () { A.show[m.key] = this.checked; draw(); }; });
+  // drag the stop line on the calendar view
+  (function () {
+    var cv = $("a-tl"), drag = false;
+    function dayAt(e) { var r = cv.getBoundingClientRect(), x = e.clientX - r.left; return aGeom.x0 + (x - aGeom.l) / (aGeom.r - aGeom.l) * (aGeom.x1 - aGeom.x0); }
+    cv.addEventListener("pointerdown", function (e) {
+      if (A.view !== "cal" || !aGeom) return;
+      drag = true; cv.setPointerCapture(e.pointerId); setStop(dayAt(e));
+    });
+    cv.addEventListener("pointermove", function (e) { if (drag) setStop(dayAt(e)); });
+    cv.addEventListener("pointerup", function () { drag = false; });
+    cv.addEventListener("pointercancel", function () { drag = false; });
+  })();
+  function drawA() {
+    sync("a-stop", A.stop); sync("a-stop-num", A.stop);
+    var est = estimates(A.stop);
+    $("a-n").textContent = est.n + " of " + N;
+    $("a-ev").textContent = est.ev;
+    $("a-cens").textContent = est.n - est.ev;
+    // what each estimate says
+    var shown = METHODS.filter(function (m) { return A.show[m.key]; });
+    var h = '<table class="tt"><tr><th class="r">Estimate</th><th>Median delay</th><th>Risk of reinfection within 180 days</th></tr>';
+    shown.forEach(function (m) {
+      var e = est[m.key];
+      h += '<tr><th class="r"><span class="sw ln" style="background:var(' + m.col + ')"></span>' + m.short + "</th><td>" + dayFmt(median(e.pts)) +
+        "</td><td>" + (1 - Sat(e.pts, 180)).toFixed(2) + "</td></tr>";
+    });
+    $("a-table").innerHTML = shown.length ? h + "</table>" : "";
+    if (tab !== "A") return;
+    drawTimeline(est);
+    // the estimates
+    var g = plot($("a-sv"), [0, SINCE_MAX], [-0.03, 1.03]);
+    axes(g, [0, 100, 200, 300, 400, 500, 600, 700, 800], [0, 0.25, 0.5, 0.75, 1], "Days since treatment", "Still free", String);
+    METHODS.forEach(function (m) { if (A.show[m.key]) drawMethod(g, m, est); });
+  }
+  function drawTimeline(est) {
+    var cal = A.view === "cal", xmax = cal ? CAL_MAX : SINCE_MAX;
+    var g = plot($("a-tl"), [0, xmax], [N + 0.5, 0.5], { l: 20, r: 14, t: 10, b: 40 }), c = g.c, s = A.stop;
+    aGeom = { l: g.l, r: g.r, x0: 0, x1: xmax };
+    $("a-tl").classList.toggle("drag", cal);
+    $("a-tl-title").textContent = cal ? "One line per person, by calendar day: from treatment to reinfection or the stop"
+      : "One line per person, lined up at treatment: from treatment to reinfection or the stop";
+    var xt = cal ? [0, 120, 240, 360, 480, 600, 720, 840, 960, 1080] : [0, 100, 200, 300, 400, 500, 600, 700, 800];
+    axes(g, xt, [], cal ? "Calendar day of the study" : "Days since treatment", "");
+    font(c, 12.5, 600); c.fillStyle = css("--ink");
+    c.save(); c.translate(10, (g.t + g.b) / 2); c.rotate(-Math.PI / 2); c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText("Person, in order of joining", 0, 0); c.restore();
+    var colLine = css("--muted"), colHit = css("--hit"), colOpen = css("--accent"), colFut = css("--muted");
+    c.save(); c.beginPath(); c.rect(g.l, g.t, g.r - g.l, g.b - g.t + 1); c.clip();
+    for (var i = 0; i < N; i++) {
+      var y = g.Y(i + 1), joined = ENTRY[i] < s, fu = s - ENTRY[i], closed = joined && DELAY[i] <= fu;
+      var off = cal ? ENTRY[i] : 0, xs = g.X(off), xe = g.X(off + (closed ? DELAY[i] : Math.max(fu, 0))), xr = g.X(off + DELAY[i]);
+      if (joined) {
+        c.globalAlpha = 1; c.strokeStyle = colLine; c.lineWidth = 1.6; c.setLineDash([]);
+        c.beginPath(); c.moveTo(xs, y); c.lineTo(xe, y); c.stroke();
+        if (cal) { c.fillStyle = colLine; c.fillRect(xs - 0.75, y - 2, 1.5, 4); }
+      }
+      if (A.future && !closed) {
+        c.globalAlpha = 0.45; c.strokeStyle = colFut; c.lineWidth = 1.2; c.setLineDash([3, 3]);
+        c.beginPath(); c.moveTo(joined ? xe : xs, y); c.lineTo(xr, y); c.stroke(); c.setLineDash([]);
+        dot(c, xr, y, 2.4, colFut);
+      }
+      c.globalAlpha = 1;
+      if (closed) dot(c, xe, y, 2.6, colHit);
+      else if (joined) dot(c, xe, y, 2.6, css("--panel"), colOpen, 1.6);
+    }
+    c.restore();
+    if (cal) {
+      var xs2 = g.X(s);
+      c.strokeStyle = css("--ink"); c.lineWidth = 2; c.beginPath(); c.moveTo(xs2, g.t); c.lineTo(xs2, g.b); c.stroke();
+      font(c, 12, 700); c.fillStyle = css("--ink"); c.textBaseline = "bottom";
+      c.textAlign = xs2 > g.r - 80 ? "right" : "left";
+      c.fillText("stop: day " + s, xs2 + (c.textAlign === "left" ? 5 : -5), g.b - 2);
+    }
+    var lg = '<span><span class="sw ln" style="background:var(--muted)"></span>followed</span>' +
+      '<span><span class="sw dot" style="background:var(--hit)"></span>reinfected</span>' +
+      '<span><span class="sw ring" style="border-color:var(--accent)"></span>still free at the stop (censored)</span>';
+    if (A.future) lg += '<span><span class="sw dash" style="border-color:var(--muted)"></span><span class="sw dot" style="background:var(--muted);opacity:0.6"></span>after the stop: when they are really reinfected</span>';
+    $("a-tl-legend").innerHTML = lg;
+  }
+
+  // ---------- B: Kaplan-Meier ----------
+  var B = { ticks: true, day: 100, calc: false, show: { truth: false, m1: false, m2: false, m3: false } };
+  var BEST_EST = estimates(STOP);
+  $("b-ticks").onchange = function () { B.ticks = this.checked; draw(); };
+  $("b-calc").onchange = function () { B.calc = this.checked; draw(); };
+  METHODS.forEach(function (m) { $("b-" + m.key).onchange = function () { B.show[m.key] = this.checked; draw(); }; });
+  function setDay(v) { if (!isFinite(v)) return; B.day = Math.round(clamp(v, 0, STOP)); draw(); }
+  $("b-day").addEventListener("input", function () { setDay(parseFloat(this.value)); });
+  $("b-day-num").addEventListener("input", function () { setDay(parseFloat(this.value)); });
+  $("b-day-num").addEventListener("change", function () { draw(); });
+  // drag the reading line on the plot, as the stop line on tab A
+  var bGeom = null;
+  (function () {
+    var cv = $("b-canvas"), drag = false;
+    function dayAt(e) { var r = cv.getBoundingClientRect(); return bGeom.x0 + (e.clientX - r.left - bGeom.l) / (bGeom.r - bGeom.l) * (bGeom.x1 - bGeom.x0); }
+    cv.addEventListener("pointerdown", function (e) { if (!bGeom) return; drag = true; cv.setPointerCapture(e.pointerId); setDay(dayAt(e)); });
+    cv.addEventListener("pointermove", function (e) { if (drag) setDay(dayAt(e)); });
+    cv.addEventListener("pointerup", function () { drag = false; });
+    cv.addEventListener("pointercancel", function () { drag = false; });
+  })();
+  var RISK_DAYS = [0, 60, 120, 180, 240, 300, 360];
+  function drawB() {
+    var est = BEST_EST, km = est.km;
+    sync("b-day", B.day); sync("b-day-num", B.day);
+    $("b-calc-wrap").hidden = !B.calc;
+    $("b-r-day").textContent = B.day;
+    $("b-r-s").textContent = Sat(km.pts, B.day).toFixed(3);
+    $("b-r-n").textContent = atRisk(est.obs, B.day);
+    $("b-risk").innerHTML = '<table class="tt"><tr><th class="r">Day</th>' + RISK_DAYS.map(function (d) { return "<th>" + d + "</th>"; }).join("") +
+      '</tr><tr><th class="r">Still at risk</th>' + RISK_DAYS.map(function (d) { return "<td>" + atRisk(est.obs, d) + "</td>"; }).join("") + "</tr></table>";
+    if (B.calc) {
+      var h = '<table class="tt"><tr><th>Day</th><th>At risk</th><th>Reinfected</th><th>Censored</th><th>Proportion surviving the day<br>1 − reinfected / at risk</th><th>Cumulative survival S(t)<br>previous S(t) × proportion surviving</th></tr>';
+      km.rows.forEach(function (r) {
+        h += "<tr><td>" + r.t + "</td><td>" + r.n + "</td><td>" + (r.d || '<span class="m">0</span>') + "</td><td>" + (r.c || '<span class="m">0</span>') +
+          "</td><td" + (r.d ? ">1 − " + r.d + "/" + r.n + " = " + (1 - r.d / r.n).toFixed(3) : ' class="m">1') + "</td><td>" + r.S.toFixed(3) + "</td></tr>";
+      });
+      $("b-calc-table").innerHTML = h + "</table>";
+    }
+    if (tab !== "B") return;
+    var g = plot($("b-canvas"), [0, 372], [-0.03, 1.03]), c = g.c;
+    bGeom = { l: g.l, r: g.r, x0: 0, x1: 372 };
+    axes(g, RISK_DAYS, [0, 0.25, 0.5, 0.75, 1], "Days since treatment", "Still free", String);
+    METHODS.forEach(function (m) { if (B.show[m.key]) drawMethod(g, m, est); });
+    steps(g, km.pts, km.end, css("--accent"), 3);
+    if (B.ticks) {
+      c.strokeStyle = css("--accent"); c.lineWidth = 1.6;
+      km.cens.forEach(function (p) { var x = g.X(p.t), y = g.Y(p.S); c.beginPath(); c.moveTo(x, y - 5); c.lineTo(x, y + 5); c.stroke(); });
+    }
+    var x = g.X(B.day), y = g.Y(Sat(km.pts, B.day));
+    c.strokeStyle = css("--ink"); c.lineWidth = 1.4; c.setLineDash([4, 4]);
+    c.beginPath(); c.moveTo(x, g.b); c.lineTo(x, g.t); c.stroke();
+    c.lineWidth = 1.2; c.beginPath(); c.moveTo(x, y); c.lineTo(g.l, y); c.stroke(); c.setLineDash([]);
+    dot(c, x, y, 4.5, css("--ink"));
+    var lg = '<span><span class="sw ln" style="background:var(--accent)"></span>Kaplan-Meier</span>';
+    if (B.ticks) lg += '<span><span class="sw" style="width:2px;height:12px;background:var(--accent)"></span>a censored person</span>';
+    METHODS.forEach(function (m) { if (B.show[m.key]) lg += '<span><span class="sw ' + (m.key === "truth" ? "band" : "ln") + '" style="background:var(' + m.col + ')"></span>' + m.name + "</span>"; });
+    $("b-legend").innerHTML = lg;
+  }
+
+  // ---------- C: hazard ratio ----------
+  // the dashed curve is the no-net Kaplan-Meier with each day's reinfected / at risk multiplied by the HR
+  var C = { hr: 1, day: 180 };
+  var GROUPS = [["No net", 0, "--accent"], ["Net", 1, "--keep"]];
+  var KM_NET = [0, 1].map(function (g) { return kmCurve(STUDY.filter(function (o) { return o.net === g; })); });
+  function scaled(hr) {
+    var S = 1;
+    return KM_NET[0].rows.filter(function (r) { return r.d; }).map(function (r) { S *= Math.max(0, 1 - hr * r.d / r.n); return { t: r.t, S: S }; });
+  }
+  function setHR(v) { if (!isFinite(v) || v <= 0) return; C.hr = clamp(v, 0.1, 1.5); draw(); }
+  $("c-hr").addEventListener("input", function () { setHR(parseFloat(this.value)); });
+  $("c-hr-num").addEventListener("input", function () { setHR(parseFloat(this.value)); });
+  $("c-hr-num").addEventListener("change", function () { draw(); });
+  // R's estimate: exp(coef) in ROUT.cox
+  $("c-best").onclick = function () { setHR(0.50); };
+  function setCDay(v) { if (!isFinite(v)) return; C.day = Math.round(clamp(v, 0, STOP)); draw(); }
+  $("c-day").addEventListener("input", function () { setCDay(parseFloat(this.value)); });
+  $("c-day-num").addEventListener("input", function () { setCDay(parseFloat(this.value)); });
+  $("c-day-num").addEventListener("change", function () { draw(); });
+  var cGeom = null;
+  (function () {
+    var cv = $("c-canvas"), drag = false;
+    function dayAt(e) { var r = cv.getBoundingClientRect(); return cGeom.x0 + (e.clientX - r.left - cGeom.l) / (cGeom.r - cGeom.l) * (cGeom.x1 - cGeom.x0); }
+    cv.addEventListener("pointerdown", function (e) { if (!cGeom) return; drag = true; cv.setPointerCapture(e.pointerId); setCDay(dayAt(e)); });
+    cv.addEventListener("pointermove", function (e) { if (drag) setCDay(dayAt(e)); });
+    cv.addEventListener("pointerup", function () { drag = false; });
+    cv.addEventListener("pointercancel", function () { drag = false; });
+  })();
+  function drawC() {
+    sync("c-hr", C.hr); sync("c-hr-num", C.hr); sync("c-day", C.day); sync("c-day-num", C.day);
+    var sc = scaled(C.hr), k0 = KM_NET[0], k1 = KM_NET[1];
+    $("c-r-day").textContent = C.day;
+    $("c-r-0").textContent = C.day > k0.end ? "—" : Sat(k0.pts, C.day).toFixed(3);
+    $("c-r-x").textContent = C.day > k0.end ? "—" : Sat(sc, C.day).toFixed(3);
+    $("c-r-1").textContent = C.day > k1.end ? "—" : Sat(k1.pts, C.day).toFixed(3);
+    if (tab !== "C") return;
+    var g = plot($("c-canvas"), [0, 372], [-0.03, 1.03]), c = g.c;
+    cGeom = { l: g.l, r: g.r, x0: 0, x1: 372 };
+    axes(g, RISK_DAYS, [0, 0.25, 0.5, 0.75, 1], "Days since treatment", "Still free", String);
+    GROUPS.forEach(function (gr) {
+      var k = KM_NET[gr[1]], col = css(gr[2]);
+      steps(g, k.pts, k.end, col, 2.4);
+      c.strokeStyle = col; c.lineWidth = 1.6;
+      k.cens.forEach(function (p) { var x = g.X(p.t), y = g.Y(p.S); c.beginPath(); c.moveTo(x, y - 5); c.lineTo(x, y + 5); c.stroke(); });
+    });
+    steps(g, sc, k0.end, css("--keep"), 3.2, { dash: [7, 4] });
+    var x = g.X(C.day);
+    c.strokeStyle = css("--ink"); c.lineWidth = 1.4; c.setLineDash([4, 4]);
+    c.beginPath(); c.moveTo(x, g.b); c.lineTo(x, g.t); c.stroke(); c.setLineDash([]);
+    $("c-legend").innerHTML = '<span><span class="sw ln" style="background:var(--accent)"></span>no net: Kaplan-Meier</span>' +
+      '<span><span class="sw ln" style="background:var(--keep)"></span>net: Kaplan-Meier</span>' +
+      '<span><span class="sw dash" style="border-color:var(--keep)"></span>no net, with the reinfection rate × HR</span>' +
+      '<span><span class="sw" style="width:2px;height:12px;background:var(--muted)"></span>a censored person</span>';
+  }
+
+  // ---------- D: read the R output ----------
+  var D = { model: "km" };
+  seg($("d-model"), "data-m", function (m) { D.model = m; draw(); });
+  var DTEXT = {
+    km: "Kaplan-Meier for everyone together: tab B's curve. No groups and no hazard ratio.",
+    kmnet: "Kaplan-Meier for each group on its own: tab C's blue and green curves. Still no hazard ratio: each curve " +
+      "comes only from its own group. NA means the curve has not come down far enough to tell.",
+    cox: "The Cox model: one hazard ratio for net vs no net, the same at every time, as set with the slider on tab C. " +
+      "coef is log(HR) and se(coef) is its standard error, both on the log scale. exp(coef) is the HR. " +
+      "lower .95 and upper .95 are exp(coef ± 1.96 × se(coef)). exp(-coef) is 1 / HR: the HR the other way round."
+  };
+  function drawD() { $("d-out").textContent = ROUT[D.model].join("\n"); $("d-text").textContent = DTEXT[D.model]; }
+
+  function draw() { drawA(); drawB(); drawC(); drawD(); }
+  var rt;
+  window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(draw, 60); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  showTab();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Regression Clinic</title>
+<style>
+/* Two tabs. A: a true straight line with problems added one at a time, to see what each looks like on the residual
+   plots and against the model's prediction ranges. B: six made-up case files, any model on any of them. R's real
+   output (errors and warnings included) is pasted in by data/r_outputs.R; everything else is computed here.
+   The app is a tool only: every question is on the printed worksheet. Palette follows weeks 4 to 8. */
+:root {
+  --bg: #F6F8FB;
+  --panel: #FFFFFF;
+  --soft: #EAF1F8;
+  --fg: #1B2533;
+  --muted: #5A6878;
+  --line: #D5DEE9;
+  --ink: #1F3A5F;
+  --accent: #2F6BB0;
+  --bar: #A9C0DA;
+  --hit: #D9822B;
+  --keep: #2E7D32;
+  --miss: #B23A2B;
+  --alt: #7B4FA0;
+  --font-body: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+    --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66; --alt: #B992DD;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151D; --panel: #17202B; --soft: #1E2B3A; --fg: #E4EAF2; --muted: #9AA8B8; --line: #2C3A4B;
+  --ink: #C5D7EE; --accent: #78A9E0; --bar: #3E5B7E; --hit: #F0A350; --keep: #6CC070; --miss: #EE7B66; --alt: #B992DD;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(32px, env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: grid; gap: 4px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); color: var(--ink); line-height: 1.15; }
+.story { margin: 0; max-width: 78ch; font-size: 15.5px; }
+.story b { color: var(--ink); }
+
+nav.steps { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+nav.steps button {
+  font: inherit; font-weight: 600; font-size: 15px; color: var(--muted); background: none; border: 0; cursor: pointer;
+  padding: 10px 12px; border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+nav.steps button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+nav.steps .num { font-family: var(--font-num); font-size: 13px; margin-right: 6px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 780px) { .bench { grid-template-columns: minmax(0, 1fr); } #p-res .stage { order: -1; } }
+.controls { display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.controls h2 { margin: 0; font-size: 18px; color: var(--ink); }
+.controls p { margin: 0; font-size: 14.5px; color: var(--muted); }
+.controls p b { color: var(--fg); }
+.controls code, .chart p code { font-family: var(--font-num); font-size: 13px; color: var(--ink); }
+.field { display: grid; gap: 4px; }
+.field > label, .field > .lab { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.field > label .val { font-family: var(--font-num); font-weight: 600; color: var(--ink); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="number"] {
+  font: inherit; font-family: var(--font-num); font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); width: 100%;
+}
+.pred { display: grid; grid-template-columns: auto 110px; gap: 10px; align-items: center; font-size: 14.5px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btns .note { font-size: 13px; color: var(--muted); }
+button.act {
+  font: inherit; font-size: 14.5px; font-weight: 600; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--panel);
+}
+button.act.ghost { background: transparent; color: var(--accent); }
+button.act:disabled { opacity: 0.45; cursor: default; }
+.seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; justify-self: start; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 14px; font-weight: 600; padding: 6px 12px; border: 0; background: transparent; color: var(--accent); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+.seg.code, .seg.list { display: grid; justify-self: stretch; }
+.seg.code button { font-family: var(--font-num); font-size: 13px; text-align: left; overflow-wrap: anywhere; }
+.seg.list button { text-align: left; }
+.seg.code button + button, .seg.list button + button { border-top: 1px solid var(--line); }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 14.5px; cursor: pointer; line-height: 1.35; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; margin: 0; }
+.check .sw { margin-top: 4px; }
+.check code { font-family: var(--font-num); font-size: 13px; }
+.checks { display: grid; gap: 8px; }
+.divider { border-top: 1px solid var(--line); }
+
+.stage { display: grid; gap: 12px; min-width: 0; }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 6px; display: grid; gap: 4px; min-width: 0; }
+.chart h3 { margin: 0 4px; font-size: 14px; color: var(--ink); }
+.chart > p { margin: 0 4px 4px; font-size: 13.5px; color: var(--muted); }
+.chart > .btns { margin: 2px 4px 4px; }
+canvas { display: block; width: 100%; height: 340px; }
+.diag { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.diag .cell { display: grid; gap: 2px; min-width: 0; }
+.diag h4 { margin: 0 4px; font-size: 13px; color: var(--ink); }
+.diag canvas { height: 230px; }
+.diag .cell .seg { margin: 2px 4px 0; }
+.diag .cell .seg button { font-size: 12.5px; padding: 4px 9px; }
+@media (max-width: 780px) { canvas { height: 280px; } .diag { grid-template-columns: minmax(0, 1fr); } .diag canvas { height: 220px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); padding: 0 4px 4px; }
+.sw { display: inline-block; width: 14px; height: 10px; vertical-align: -1px; margin-right: 6px; border-radius: 2px; flex: none; }
+.sw.ln { height: 3px; vertical-align: 3px; }
+.sw.band { height: 7px; vertical-align: 1px; }
+.sw.dot { width: 10px; border-radius: 50%; }
+.sw.ring { width: 10px; border-radius: 50%; background: none !important; border: 2px solid; }
+.sw.dia { width: 9px; height: 9px; transform: rotate(45deg); border-radius: 1px; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: var(--soft); border-radius: 8px; padding: 9px 12px; display: grid; gap: 1px; min-width: 0; }
+.stat .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { font-family: var(--font-num); font-size: 19px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat .s { font-size: 12.5px; color: var(--muted); }
+.status { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 999px; justify-self: start; margin: 0 4px; }
+.status.ok { background: var(--soft); color: var(--muted); }
+.status.warning { background: color-mix(in srgb, var(--hit) 20%, transparent); color: var(--hit); }
+.status.error { background: color-mix(in srgb, var(--miss) 18%, transparent); color: var(--miss); }
+pre.rout {
+  margin: 0; font-family: var(--font-num); font-size: 13px; line-height: 1.45; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+}
+pre.rout .cmd { color: var(--accent); }
+pre.rout .err { color: var(--miss); }
+pre.rout .wrn { color: var(--hit); }
+.empty { margin: 4px; padding: 18px 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 14px; text-align: center; }
+footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Stats drop-in · Week 9</span>
+    <h1>Regression Clinic</h1>
+  </header>
+  <p class="story">Is the model right for the data? Tab A starts from a <b>true straight line</b>: add problems one at a
+    time and see what each does to the residual plots. Tab B has <b>six made-up studies</b> and a menu of regression
+    models. <b>Any model will run on any study</b>, just as in R. Sometimes R stops with an error, sometimes it warns,
+    and sometimes it gives an answer without complaint.</p>
+
+  <nav class="steps" role="tablist" aria-label="Tabs">
+    <button role="tab" id="t-res" aria-controls="p-res" aria-selected="true"><span class="num">A</span>Exploring residual plots</button>
+    <button role="tab" id="t-clinic" aria-controls="p-clinic" aria-selected="false"><span class="num">B</span>Model clinic</button>
+  </nav>
+
+  <!-- A. Exploring residual plots -->
+  <section class="bench" id="p-res" role="tabpanel" aria-labelledby="t-res">
+    <div class="controls">
+      <h2>A true straight line</h2>
+      <p>Made-up data where the truth is <b>y = 2 + 0.5 × x</b>, with normal scatter (SD 1). People come in villages of
+        10, and everyone in a village has a similar x. The model is always <code>lm(y ~ x)</code>.</p>
+      <div class="field"><span class="lab">Number of people</span>
+        <div class="seg" id="r-n"><button data-v="30">30</button><button data-v="50">50</button><button data-v="100">100</button><button data-v="200">200</button><button data-v="500">500</button></div>
+      </div>
+      <div class="divider"></div>
+      <div class="field"><span class="lab">Add problems</span></div>
+      <div id="r-probs" class="checks"></div>
+      <div class="divider"></div>
+      <div class="field"><span class="lab">Standard errors</span>
+        <div class="seg" id="r-se"><button data-v="model" aria-pressed="true">From the model</button><button data-v="cluster" aria-pressed="false">Clustered by village</button></div>
+      </div>
+      <label class="check"><input type="checkbox" id="r-drop"><span>Leave out the point with the largest Cook's distance, and refit</span></label>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="r-pi"><span class="sw band" style="background:var(--hit);opacity:.45"></span><span>Show the model's prediction ranges</span></label>
+      </div>
+      <div class="btns"><button class="act ghost" id="r-new">New sample</button><span class="note" id="r-sample"></span></div>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3>y against x, with the fitted straight line</h3>
+        <canvas id="r-cv" role="img" aria-label="The simulated data with the fitted straight line"></canvas>
+        <div class="legend" id="r-legend"></div>
+      </div>
+      <div class="readout">
+        <div class="stat"><span class="k">Slope estimate</span><span class="v" id="r-est"></span></div>
+        <div class="stat"><span class="k">Standard error</span><span class="v" id="r-se-v"></span></div>
+        <div class="stat"><span class="k">95% CI</span><span class="v" id="r-ci"></span></div>
+      </div>
+      <div class="readout" id="r-inside" hidden></div>
+      <div class="chart">
+        <h3>Diagnostic plots</h3>
+        <div class="diag">
+          <div class="cell"><h4>Residuals vs fitted</h4><canvas id="r-d1"></canvas></div>
+          <div class="cell"><h4>Normal Q-Q</h4><canvas id="r-d2"></canvas></div>
+          <div class="cell"><h4>Cook's distance</h4><canvas id="r-d3"></canvas></div>
+          <div class="cell"><h4>Residuals by village</h4><canvas id="r-d4"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B. Model clinic -->
+  <section class="bench" id="p-clinic" role="tabpanel" aria-labelledby="t-clinic" hidden>
+    <div class="controls">
+      <h2>Case file</h2>
+      <div class="seg list" id="c-case"></div>
+      <div class="checks" id="c-story"></div>
+      <div class="divider"></div>
+      <h2>Model</h2>
+      <div class="seg code" id="c-model"></div>
+      <label class="check" id="c-off-wrap"><input type="checkbox" id="c-off"><span>Add <code id="c-off-code"></code></span></label>
+      <div class="field" id="c-se-wrap"><span class="lab">Standard errors</span>
+        <div class="seg" id="c-se"><button data-v="model" aria-pressed="true">From the model</button><button data-v="cluster" aria-pressed="false">Clustered by village</button></div>
+      </div>
+      <div class="divider"></div>
+      <div class="field" id="c-view-wrap"><span class="lab">Plot</span><div class="seg" id="c-view"></div></div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="c-pi"><span class="sw band" style="background:var(--hit);opacity:.45"></span><span>Show the model's prediction ranges</span></label>
+        <label class="check" id="c-avg-wrap"><input type="checkbox" id="c-avg"><span class="sw dia" style="background:var(--ink)"></span><span>Show village averages</span></label>
+      </div>
+      <div class="pred"><label for="c-px" id="c-px-lab"></label><input type="number" id="c-px" step="any"></div>
+    </div>
+    <div class="stage">
+      <div class="chart">
+        <h3 id="c-title"></h3>
+        <canvas id="c-cv" role="img" aria-label="The data, with the fitted model"></canvas>
+        <div class="legend" id="c-legend"></div>
+      </div>
+      <div class="readout" id="c-readout">
+        <div class="stat"><span class="k" id="c-pk"></span><span class="v" id="c-pv"></span><span class="s" id="c-ps"></span></div>
+      </div>
+      <div class="readout" id="c-inside" hidden></div>
+      <div class="chart">
+        <h3>R console</h3>
+        <span class="status" id="c-status"></span>
+        <pre class="rout" id="c-rout"></pre>
+      </div>
+      <div class="chart">
+        <h3>Diagnostic plots</h3>
+        <p id="c-diag-note"></p>
+        <div class="diag" id="c-diag">
+          <div class="cell"><h4 id="c-d1-t"></h4><canvas id="c-d1"></canvas></div>
+          <div class="cell"><h4>Normal Q-Q</h4><canvas id="c-d2"></canvas></div>
+          <div class="cell"><h4>Cook's distance</h4><canvas id="c-d3"></canvas></div>
+          <div class="cell"><h4>Residuals against</h4><div class="seg" id="c-d4-col"></div><canvas id="c-d4"></canvas></div>
+        </div>
+        <div class="empty" id="c-diag-none">R stopped with an error, so there is no fitted model to check.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Made-up data. The R output was produced by R 4.4; everything else is calculated in your browser.</footer>
+</div>
+
+<script>
+// ---------- maths, kept apart from the page so it can be checked against R on its own ----------
+var LAB = (function () {
+  "use strict";
+  // seeded random numbers, so each sample on tab A is the same for everyone in the room
+  function rng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function rnorm(r) { var u = 0; while (u === 0) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
+
+  // ---- distributions ----
+  function pnormUpper(z) { // upper tail, accurate to about 1e-7 (Abramowitz and Stegun 26.2.17 via erfc)
+    var t = 1 / (1 + 0.5 * Math.abs(z)), y = t * Math.exp(-z * z / 2 - 1.26551223 + t * (1.00002368 + t * (0.37409196 +
+      t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 +
+      t * 0.17087277)))))))));
+    return z >= 0 ? y / 2 : 1 - y / 2;
+  }
+  function qnorm(p) { // Acklam's rational approximation
+    var a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.3577518672690, -30.66479806614716, 2.506628277459239],
+        b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572],
+        c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783],
+        d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416], q, r;
+    if (p < 0.02425) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+    if (p > 1 - 0.02425) return -qnorm(1 - p);
+    q = p - 0.5; r = q * q;
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  }
+  function lgamma(x) {
+    var c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+    var y = x, t = x + 5.5, s = 1.000000000190015;
+    t -= (x + 0.5) * Math.log(t);
+    for (var j = 0; j < 6; j++) s += c[j] / ++y;
+    return -t + Math.log(2.5066282746310005 * s / x);
+  }
+  function betacf(a, b, x) {
+    var qab = a + b, qap = a + 1, qam = a - 1, c = 1, d = 1 - qab * x / qap, m, m2, aa, del, h;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    d = 1 / d; h = d;
+    for (m = 1; m <= 300; m++) {
+      m2 = 2 * m; aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30; d = 1 / d;
+      del = d * c; h *= del; if (Math.abs(del - 1) < 3e-12) break;
+    }
+    return h;
+  }
+  function ibeta(a, b, x) {
+    if (x <= 0) return 0; if (x >= 1) return 1;
+    var bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+  }
+  // two-sided p-value for a t (df finite) or z (df = Infinity) statistic
+  function p2(stat, df) {
+    var s = Math.abs(stat);
+    if (!isFinite(df)) return 2 * pnormUpper(s);
+    return ibeta(df / 2, 0.5, df / (df + s * s));
+  }
+  var qcache = {};
+  function crit(df) { // the critical value for a 95% CI
+    if (!isFinite(df)) return 1.959963984540054;
+    if (qcache[df]) return qcache[df];
+    var lo = 1.9, hi = 15;
+    for (var k = 0; k < 80; k++) { var m = (lo + hi) / 2; if (p2(m, df) > 0.05) lo = m; else hi = m; }
+    return (qcache[df] = (lo + hi) / 2);
+  }
+
+  // ---- fitting: always an intercept and one slope ----
+  var FAM = {
+    gaussian: { inv: function (e) { return e; }, deta: function () { return 1; }, V: function () { return 1; }, start: function (y) { return y; } },
+    binomial: {
+      inv: function (e) { return 1 / (1 + Math.exp(-e)); }, deta: function (e) { var m = 1 / (1 + Math.exp(-e)); return Math.max(m * (1 - m), 2.22e-16); },
+      V: function (m) { return m * (1 - m); }, start: function (y) { return (y + 0.5) / 2; }, link: function (m) { return Math.log(m / (1 - m)); }
+    },
+    poisson: {
+      inv: function (e) { return Math.max(Math.exp(e), 2.22e-16); }, deta: function (e) { return Math.max(Math.exp(e), 2.22e-16); },
+      V: function (m) { return m; }, start: function (y) { return y + 0.1; }, link: function (m) { return Math.log(m); }
+    }
+  };
+  function devRes(fam, y, mu) {
+    var d;
+    if (fam === "binomial") d = -2 * (y > 0 ? Math.log(mu) : 0) - 2 * (y < 1 ? Math.log(1 - mu) : 0);
+    else if (fam === "poisson") d = 2 * ((y > 0 ? y * Math.log(y / mu) : 0) - (y - mu));
+    else d = (y - mu) * (y - mu);
+    return (y >= mu ? 1 : -1) * Math.sqrt(Math.max(d, 0));
+  }
+  function wls(x, z, w) {
+    var Sw = 0, Sx = 0, Sxx = 0, Sz = 0, Sxz = 0;
+    for (var i = 0; i < x.length; i++) { Sw += w[i]; Sx += w[i] * x[i]; Sxx += w[i] * x[i] * x[i]; Sz += w[i] * z[i]; Sxz += w[i] * x[i] * z[i]; }
+    var det = Sw * Sxx - Sx * Sx, b1 = (Sw * Sxz - Sx * Sz) / det;
+    return { b: [(Sz - b1 * Sx) / Sw, b1], B: [[Sxx / det, -Sx / det], [-Sx / det, Sw / det]] };
+  }
+  // fam: "gaussian", "binomial" or "poisson"; quasi: estimate the dispersion (quasipoisson); off: offset or null
+  function fit(x, y, fam, off, quasi) {
+    var n = x.length, F = FAM[fam], o = off || null, i, eta = new Array(n), mu = new Array(n), w = new Array(n), z = new Array(n), r, it = 0;
+    if (fam === "gaussian") {
+      for (i = 0; i < n; i++) { w[i] = 1; z[i] = y[i] - (o ? o[i] : 0); }
+      r = wls(x, z, w);
+      for (i = 0; i < n; i++) { eta[i] = r.b[0] + r.b[1] * x[i] + (o ? o[i] : 0); mu[i] = eta[i]; }
+    } else {
+      for (i = 0; i < n; i++) { mu[i] = F.start(y[i]); eta[i] = F.link(mu[i]); }
+      var dev = Infinity;
+      for (it = 1; it <= 25; it++) {
+        for (i = 0; i < n; i++) {
+          var g = F.deta(eta[i]);
+          z[i] = eta[i] - (o ? o[i] : 0) + (y[i] - mu[i]) / g;
+          w[i] = g * g / F.V(mu[i]);
+        }
+        r = wls(x, z, w);
+        var nd = 0;
+        for (i = 0; i < n; i++) {
+          eta[i] = r.b[0] + r.b[1] * x[i] + (o ? o[i] : 0); mu[i] = F.inv(eta[i]);
+          var dr = devRes(fam, y[i], mu[i]); nd += dr * dr;
+        }
+        if (Math.abs(nd - dev) / (Math.abs(nd) + 0.1) < 1e-8) { dev = nd; break; }
+        dev = nd;
+      }
+      // R reports the covariance from the weights of the last iteration
+    }
+    var phi = 1, pearson = 0;
+    for (i = 0; i < n; i++) pearson += (y[i] - mu[i]) * (y[i] - mu[i]) / F.V(mu[i]);
+    if (fam === "gaussian" || quasi) phi = pearson / (n - 2);
+    return { n: n, x: x, y: y, fam: fam, quasi: !!quasi, b: r.b, B: r.B, w: w, eta: eta, mu: mu, phi: phi, iter: it };
+  }
+  // standard errors and the test, as summary() or coeftest(vcov = vcovCL) would give them
+  function coefs(f, cluster) {
+    var V, df;
+    if (cluster) {
+      var G = {}, ng = 0, k;
+      for (var i = 0; i < f.n; i++) {
+        var u = f.y[i] - f.mu[i]; // the score for an intercept and slope, for these canonical links
+        k = cluster[i]; if (!G[k]) { G[k] = [0, 0]; ng++; }
+        G[k][0] += u; G[k][1] += u * f.x[i];
+      }
+      var M = [[0, 0], [0, 0]];
+      Object.keys(G).forEach(function (g) { var s = G[g]; M[0][0] += s[0] * s[0]; M[0][1] += s[0] * s[1]; M[1][1] += s[1] * s[1]; });
+      M[1][0] = M[0][1];
+      var B = f.B, adj = ng / (ng - 1) * (f.n - 1) / (f.n - 2), BM = mul(B, M), V0 = mul(BM, B);
+      V = [[adj * V0[0][0], adj * V0[0][1]], [adj * V0[1][0], adj * V0[1][1]]];
+      df = f.fam === "gaussian" ? f.n - 2 : Infinity;
+    } else {
+      V = [[f.phi * f.B[0][0], f.phi * f.B[0][1]], [f.phi * f.B[1][0], f.phi * f.B[1][1]]];
+      df = f.fam === "gaussian" || f.quasi ? f.n - 2 : Infinity;
+    }
+    var se = [Math.sqrt(V[0][0]), Math.sqrt(V[1][1])], cv = crit(df);
+    return { est: f.b.slice(), se: se, df: df, crit: cv, stat: f.b[1] / se[1], p: p2(f.b[1] / se[1], df),
+             lo: f.b[1] - cv * se[1], hi: f.b[1] + cv * se[1] };
+  }
+  function mul(A, B) {
+    return [[A[0][0] * B[0][0] + A[0][1] * B[1][0], A[0][0] * B[0][1] + A[0][1] * B[1][1]],
+            [A[1][0] * B[0][0] + A[1][1] * B[1][0], A[1][0] * B[0][1] + A[1][1] * B[1][1]]];
+  }
+  // what R's plot(fit) uses: residuals, leverage, standardised residuals and Cook's distance
+  function diagnostics(f) {
+    var n = f.n, out = { fitted: [], res: [], std: [], cook: [], hat: [] };
+    for (var i = 0; i < n; i++) {
+      var x = f.x[i], h = f.w[i] * (f.B[0][0] + 2 * x * f.B[0][1] + x * x * f.B[1][1]);
+      var F = FAM[f.fam], r = devRes(f.fam, f.y[i], f.mu[i]), pr = (f.y[i] - f.mu[i]) / Math.sqrt(F.V(f.mu[i]));
+      if (f.fam === "gaussian") r = f.y[i] - f.mu[i];
+      out.hat.push(h);
+      out.fitted.push(f.fam === "gaussian" ? f.mu[i] : f.eta[i]);
+      out.res.push(r);
+      out.std.push(r / Math.sqrt(f.phi * (1 - h)));
+      out.cook.push(pr * pr / ((1 - h) * (1 - h)) * h / (f.phi * 2));
+    }
+    return out;
+  }
+  // R's lowess (f = 2/3, 3 robustness steps), for the red smooth on residual plots
+  function lowess(xs, ys, frac, iters) {
+    var n = xs.length, idx = xs.map(function (_, i) { return i; }).sort(function (a, b) { return xs[a] - xs[b]; });
+    var x = idx.map(function (i) { return xs[i]; }), y = idx.map(function (i) { return ys[i]; });
+    var ns = Math.max(2, Math.min(n, Math.floor(frac * n + 1e-7))), rw = new Array(n).fill(1), fit = new Array(n);
+    for (var it = 0; it <= iters; it++) {
+      var nl = 0, nr = ns - 1;
+      for (var i = 0; i < n; i++) {
+        while (nr < n - 1 && x[i] - x[nl] > x[nr + 1] - x[i]) { nl++; nr++; }
+        var h = Math.max(x[i] - x[nl], x[nr] - x[i]), sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (var j = nl; j <= nr; j++) {
+          var d = h > 0 ? Math.abs(x[j] - x[i]) / h : 0, wt = d < 0.999 ? Math.pow(1 - d * d * d, 3) : (d < 1 ? 1e-9 : 0);
+          wt *= rw[j]; sw += wt; sx += wt * x[j]; sy += wt * y[j];
+        }
+        if (sw <= 0) { fit[i] = y[i]; continue; }
+        var mx = sx / sw, my = sy / sw;
+        for (j = nl; j <= nr; j++) {
+          d = h > 0 ? Math.abs(x[j] - x[i]) / h : 0; wt = (d < 0.999 ? Math.pow(1 - d * d * d, 3) : (d < 1 ? 1e-9 : 0)) * rw[j];
+          sxx += wt * (x[j] - mx) * (x[j] - mx); sxy += wt * (x[j] - mx) * (y[j] - my);
+        }
+        fit[i] = sxx > 1e-12 * (h * h + 1e-12) * sw ? my + sxy / sxx * (x[i] - mx) : my;
+      }
+      if (it === iters) break;
+      var r = y.map(function (v, k) { return Math.abs(v - fit[k]); }), s = r.slice().sort(function (a, b) { return a - b; });
+      var m = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+      if (m === 0) break;
+      rw = r.map(function (v) { var u = v / (6 * m); return u < 1 ? (1 - u * u) * (1 - u * u) : 0; });
+    }
+    return { x: x, y: fit };
+  }
+  function ppoints(n) { var a = n <= 10 ? 3 / 8 : 0.5, p = []; for (var i = 1; i <= n; i++) p.push((i - a) / (n + 1 - 2 * a)); return p; }
+  return { rng: rng, rnorm: rnorm, fit: fit, coefs: coefs, diagnostics: diagnostics,
+           lowess: lowess, ppoints: ppoints, qnorm: qnorm, pnorm: function (z) { return 1 - pnormUpper(z); }, p2: p2, crit: crit };
+})();
+</script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  /* DATA-BEGIN: written by data/r_outputs.R, do not edit by hand */
+  var DATA = {"haemoglobin":{"age":[8.2,8.5,5.8,2,6,8.2,9.9,7.8,2.8,3.7,3.9,8.2,5.6,5.8,8.5,3.4,4.5,3.6,5.8,3.8,4.2,9.1,4.8,2.3,7.3,6.9,1.6,9.6,4.4,4.8,6.7,5.2,2,1.8,5.3,8.9,4.3,9.5,8.8,3.7,5,4.7,9.9,2.8,3.7,2.4,4,7.5,1.8,2.4,6.5,6.9,7.8,1.7,7.8,6.9,8.9,3.3,2.4,1.2,10,4.6,9.1,5.3,5.8,6.9,5.2,6.4,3.8,7.1,6.7,6.7,5.2,8.7,7.6,8.7,6.3,8,8.2,8.6,1.7,6.5,1.3,3.9,1.5,3.1,8.9,7.8,9.2,1.2,3.3,9.1,9.1,3,8.9,7.4,3.1,6.4,1.6,6.5],"hb":[10.5,10.6,13.3,10.6,12,11.9,12.1,12.9,11,10.8,12.6,12.3,10.4,11.4,12.6,10.6,9.7,11.1,10.5,10.8,12,13.4,11.7,10,10.1,11.4,9.6,13.7,10.1,10.5,11.3,13,10,9.1,9.3,12.3,11,11,13.7,11.1,9.8,11,11.9,11.4,10.3,8.6,10.7,12.4,9.2,7.8,13.5,9.8,11.9,10.7,11.1,12.8,13.2,10.5,11.1,11.2,11.1,9.1,12,11,11.7,13.3,10.6,9.5,10.7,10.3,11.6,9.3,11.5,12.1,13,10.3,10.8,11.3,11.3,12.2,9.1,13,8.8,10.9,10.9,10.1,13.4,12.8,12.7,10.7,10.5,12,11.3,12.8,11.9,11.3,10.7,10.3,11.9,10.5]},"parasites":{"age":[11,9,10,12,7,8,6,7,15,3,8,15,15,10,7,10,2,8,13,15,8,14,7,6,7,11,6,2,13,13,5,9,12,2,13,10,5,10,1,7,10,2,14,9,4,13,2,8,3,6,11,2,11,15,1,10,12,11,10,14,13,1,9,9,8,5,10,9,1,7,15,14,14,8,2,13,4,3,14,1,3,10,10,10,7,15,15,10,5,3,5,15,5,13,15,7,3,6,9,2,3,6,10,10,14,11,9,15,5,13,10,10,14,12,2,9,11,4,15,4,15,13,3,7,15,1,14,4,6,9,3,12,11,9,9,13,15,1,6,10,7,9,8,14,9,4,3,11,14,3],"density":[1915,7577,6103,2982,6760,8953,66206,1765,922,9170,3822,1064,3151,5404,1395,598,42316,5368,5255,463,7040,437,11750,3815,10129,4633,1369,48444,4760,428,27691,2335,1400,43665,1664,8433,18805,10462,55878,3564,3651,16785,374,6930,4470,1976,5987,3216,4159,30008,4507,2352,1210,626,8078,4892,3967,4662,7745,232,462,3031,16167,5391,13439,15224,3301,14154,23558,3901,773,3925,521,1946,1701,2832,35242,4190,255,41488,8027,5019,1481,1922,2930,2589,229,3582,2132,4459,5916,1146,25901,871,3559,7247,10211,18767,6431,26516,26463,1844,2444,5538,9781,1763,4921,1981,9380,1725,8065,1508,345,442,12664,676,620,3707,330,37628,1381,6187,33258,1957,1629,61860,346,9194,1968,4281,49105,1247,387,5285,964,3127,658,13821,2537,2145,4347,5724,3403,1168,7735,12299,71032,4191,4673,10522]},"serosurvey":{"age":[30,16,39,32,8,19,37,29,39,22,33,1,5,19,48,41,9,22,50,27,7,6,8,22,14,41,44,7,40,16,32,16,14,34,31,31,38,19,30,18,22,7,13,17,17,17,12,40,28,17,2,3,44,25,26,43,37,40,18,42,16,34,2,20,19,31,31,20,24,37,45,21,13,24,9,47,27,43,13,13,49,36,23,34,36,36,13,18,15,8,26,48,18,5,8,32,47,21,43,25,27,7,25,48,17,36,13,14,2,33,34,25,5,38,35,22,39,9,29,30,15,13,46,39,49,37,19,15,2,12,3,15,48,34,28,49,19,44,10,41,25,34,20,22,23,1,3,18,35,49,16,29,5,40,47,8,19,39,34,12,1,44,20,8,21,31,48,28,21,27,16,49,49,50,39,43,1,5,47,20,37,19,6,3,38,46,26,24,27,44,43,35,35,26,36,18,35,33,13,50],"seropos":[1,1,0,1,1,1,1,1,1,1,1,0,0,1,1,0,0,0,1,1,0,0,0,1,0,1,1,0,1,1,1,1,0,1,1,1,1,0,0,0,0,0,1,0,0,1,0,1,1,0,0,0,1,0,0,1,1,1,0,1,0,0,0,0,0,0,1,0,1,1,1,1,0,1,0,1,1,1,0,0,1,1,1,1,1,1,0,0,0,0,0,1,1,0,1,0,1,0,1,0,1,0,1,1,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1,0,0,1,1,1,1,0,0,0,0,0,0,1,1,0,1,0,1,0,1,0,0,0,0,1,0,0,0,1,1,0,1,0,1,1,0,0,1,0,1,0,1,1,0,0,1,1,1,0,1,0,1,1,1,1,1,0,0,1,1,1,0,0,0,1,1,0,0,0,1,1,1,1,1,0,0,1,0,1,1]},"episodes":{"age":[12,6,11,5,5,14,13,5,4,4,1,7,13,13,2,7,3,7,4,6,1,6,13,2,5,3,9,11,13,14,13,13,10,8,1,7,3,2,10,4,6,3,12,2,12,2,12,3,7,7,5,9,12,2,11,8,1,13,8,8,3,3,11,4,6,8,4,14,10,4,3,13,12,3,13,5,14,2,6,3,3,14,1,4,2,13,2,14,7,6,5,8,5,7,7,13,9,13,4,9,6,3,2,1,1,8,11,10,1,11,13,14,10,12,12,12,12,5,7,12,6,12,7,2,3,13,7,13,11,12,2,12,9,4,12,2,3,9,2,1,7,1,9,7,8,14,13,10,12,5],"episodes":[0,1,0,8,2,0,0,2,1,3,4,0,0,1,0,0,0,1,3,0,0,3,0,3,10,1,0,5,0,0,2,0,2,2,3,0,0,4,1,1,3,2,0,0,2,0,0,0,0,5,4,1,0,22,2,1,1,0,1,12,5,3,4,1,0,1,1,1,1,1,0,0,1,0,1,0,0,3,1,0,1,0,1,3,6,0,0,0,0,0,0,8,2,1,0,0,1,0,0,0,0,1,1,4,1,0,0,8,3,0,6,0,2,2,0,4,0,0,0,6,4,0,6,1,0,4,1,0,1,1,2,1,0,0,0,1,0,0,0,6,1,0,0,5,2,1,0,0,0,3]},"clinic":{"distance":[0.8,2.6,7.2,8,0.2,4.4,6,7.3,7.8,9.6,1.6,11.5,9.5,2.8,6.3,12.5,10.7,3.1,2.3,5.5,9.7,11.5,12,1,6.7,9.9,3.3,0.5,13.7,5.2,3.6,11.2,5.7,6.3,14.9,3.9,13.2,12.7,4.7,4,3.2,1,1.4,6.6,2.6,13.9,12.5,5.5,9.4,6.2,13.9,5.3,4.7,14.9,13.9,1.7,6.7,2.5,8.9,5.5,11.7,11.9,11.6,2,3.2,3.4,9.8,9.9,11.5,5.8,11.6,3,2.9,9.6,3.8,3.4,14.2,12.4,10.1,1.7,14.3,13.7,9.7,6.2,6.8,14.2,9.3,4.2,4.2,5.7,11.6,2.1,14.1,7.5,8.6,0.3,5.8,2.4,0.2,1.9,8.8,13.7,2.3,9.3,3.1,9.1,3.1,13,7.5,9.6,1.2,5.9,5.3,2.4,11.3,10.6,7.1,11.4,3,0.2,1.7,9.3,11.7,9.5,1,13.8,0.6,12.6,1.5,13.9,1.5,14.5,13.3,4,12.3,11.5,10.9,0.3,9.7,1.4,13.9,9.6,14.7,11.6,2.9,14.2,11.5,1.2,2.7,4],"years":[1,1,0.58,0.75,0.83,0.5,0.67,0.92,0.75,0.33,0.83,0.5,0.58,0.83,0.83,0.17,0.67,0.67,1,0.75,0.33,0.17,0.25,1,0.5,0.33,0.67,1,0.58,0.75,0.83,0.25,0.83,1,0.17,0.83,0.58,0.25,1,0.58,0.83,1,1,0.58,0.58,0.08,0.25,0.83,0.17,0.75,0.08,0.75,0.58,0.17,0.58,1,0.75,0.92,0.58,0.83,0.33,0.17,0.5,0.92,0.92,1,0.33,0.25,0.25,0.83,0.42,0.92,0.92,0.58,0.75,0.83,0.33,0.5,0.58,0.83,0.33,0.25,0.83,0.33,0.92,0.08,0.5,1,0.75,0.83,0.33,0.67,0.08,0.58,0.25,1,0.92,1,0.92,1,0.5,0.5,0.58,0.58,1,0.5,0.83,0.25,1,0.33,0.75,0.58,1,0.75,0.75,0.33,0.83,0.42,0.92,0.92,0.92,0.5,0.33,0.75,1,0.25,1,0.17,1,0.33,0.92,0.33,0.17,0.75,0.17,0.5,0.58,0.92,0.58,1,0.42,0.25,0.08,0.33,0.67,0.08,0.42,1,1,0.83],"episodes":[3,1,4,2,1,1,1,2,3,0,0,0,2,3,2,0,0,2,2,0,0,0,1,0,5,0,1,2,4,1,2,1,0,1,1,0,1,0,4,1,4,2,3,2,0,0,0,5,0,0,0,1,3,0,3,0,1,4,2,0,1,0,4,0,0,2,0,0,0,2,2,2,3,2,1,1,1,3,1,1,2,1,1,1,3,0,2,2,0,1,1,1,0,0,0,1,0,3,3,1,0,1,0,1,3,2,4,0,1,0,0,1,3,0,1,2,0,2,0,1,0,1,0,0,1,0,0,0,2,1,2,1,0,0,1,0,0,2,1,3,1,1,0,2,0,1,2,0,1,0]},"villages":{"village":[1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,13,13,13,13,13,13,13,13,13,13,14,14,14,14,14,14,14,14,14,14,15,15,15,15,15,15,15,15,15,15,16,16,16,16,16,16,16,16,16,16,17,17,17,17,17,17,17,17,17,17,18,18,18,18,18,18,18,18,18,18,19,19,19,19,19,19,19,19,19,19,20,20,20,20,20,20,20,20,20,20,21,21,21,21,21,21,21,21,21,21,22,22,22,22,22,22,22,22,22,22,23,23,23,23,23,23,23,23,23,23,24,24,24,24,24,24,24,24,24,24,25,25,25,25,25,25,25,25,25,25,26,26,26,26,26,26,26,26,26,26,27,27,27,27,27,27,27,27,27,27,28,28,28,28,28,28,28,28,28,28,29,29,29,29,29,29,29,29,29,29,30,30,30,30,30,30,30,30,30,30],"distance":[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,4.5,4.5,4.5,4.5,4.5,4.5,4.5,4.5,4.5,4.5,4.7,4.7,4.7,4.7,4.7,4.7,4.7,4.7,4.7,4.7,8.5,8.5,8.5,8.5,8.5,8.5,8.5,8.5,8.5,8.5,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.4,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.8,3.4,3.4,3.4,3.4,3.4,3.4,3.4,3.4,3.4,3.4,3.9,3.9,3.9,3.9,3.9,3.9,3.9,3.9,3.9,3.9,8.6,8.6,8.6,8.6,8.6,8.6,8.6,8.6,8.6,8.6,5.6,5.6,5.6,5.6,5.6,5.6,5.6,5.6,5.6,5.6,9.2,9.2,9.2,9.2,9.2,9.2,9.2,9.2,9.2,9.2,7.9,7.9,7.9,7.9,7.9,7.9,7.9,7.9,7.9,7.9,4.2,4.2,4.2,4.2,4.2,4.2,4.2,4.2,4.2,4.2,6.9,6.9,6.9,6.9,6.9,6.9,6.9,6.9,6.9,6.9,9.5,9.5,9.5,9.5,9.5,9.5,9.5,9.5,9.5,9.5,5.7,5.7,5.7,5.7,5.7,5.7,5.7,5.7,5.7,5.7,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.4,2.3,2.3,2.3,2.3,2.3,2.3,2.3,2.3,2.3,2.3,3.1,3.1,3.1,3.1,3.1,3.1,3.1,3.1,3.1,3.1,4.9,4.9,4.9,4.9,4.9,4.9,4.9,4.9,4.9,4.9,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.3,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,0.7,5,5,5,5,5,5,5,5,5,5,7.3,7.3,7.3,7.3,7.3,7.3,7.3,7.3,7.3,7.3,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,7.6,7.6,7.6,7.6,7.6,7.6,7.6,7.6,7.6,7.6,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,5.8,5.8,5.8,5.8,5.8,5.8,5.8,5.8,5.8,5.8],"hb":[11.5,13.8,13.4,12.5,12.4,12.8,12.1,10.3,12.1,11.8,10.8,10.2,11.4,11.1,10.6,11.2,10.2,12.2,11.4,13.4,11,11.6,12.3,12.4,12.6,12.5,12.7,12.4,11.8,12.7,12.4,13.3,13.2,11.5,13.5,12.5,10.7,12.5,11.9,12.9,8.2,9.9,9,9.3,7.1,7.8,7.7,10.7,9.1,11.1,11.6,12.9,9.8,9.9,10.8,11.1,12.4,10.5,10.8,11.9,13.1,11.8,11.4,10.8,12.9,13.6,11.2,12.3,13.1,12.4,13.4,12.5,10.9,11.1,12,12.1,12.6,11.9,13,12.7,11.6,12.7,9.4,10.1,12.5,10.8,11.7,12.6,10.2,11.2,14.9,13.9,13.7,16.5,12.8,12.5,13.1,14.9,13.8,12.9,11.3,12.6,11.4,12.5,12.6,12.7,11.5,10.9,11.8,11.7,12.1,13.1,15,12.8,12.1,13.3,12.6,14.5,12.8,12.1,10.1,11.1,10,9.1,10.6,11.3,10.3,10.5,11.2,10.3,12.9,12.6,12.4,12.3,12,11,12,11.9,12.7,11.8,12.3,12.7,9.9,12.3,10,9.7,10.3,11,11,12,12.8,14.4,13.3,12.3,12.9,10.8,12.3,11.9,13,13.4,8.3,10.7,10.1,10,10.2,9.4,9.3,9,9.4,9.1,11,11.2,12.4,8.8,9.5,10.4,10.9,12.8,10.4,12.9,10.9,11.8,12.5,11.3,11.4,10.4,13.4,12.6,11.5,10.9,10.9,10.4,10.2,10.6,11.1,11.1,11.3,10.9,10.2,10,9.6,11.4,11.4,12.4,12,12.3,12.7,11.2,10.8,12,11.5,13.4,12.7,9.6,11.1,11.2,11.2,13.6,12,12.4,7.9,7.2,9.1,8.4,8.7,9.1,8.3,11.5,11.6,8.7,8.9,11.8,12.1,11,11.8,10.7,10.6,11.5,12.7,10.9,9.7,10.6,10.9,7.2,9.8,12,10.4,10,11,10.7,10.5,10.3,10.7,10.4,11.9,11.7,10.5,10.3,11.8,9.7,9.8,11.1,10.4,11.4,11.3,10.9,10.7,12.1,8.9,10.7,8.4,9.4,12,10.5,11.4,12.7,11.1,11.1,10.9,11.3,11.3,12.7,10.3,13,10.4,11.3,11.9,12.4,11.4,11.2,12.7,9.2,10.6,9.8,11.5,11.7,11.4,12,11.2,11.6]}};
+  var ROUT = {"haemoglobin|lm|0|model":{"status":"ok","text":"> fit <- lm(hb ~ age, data = haemoglobin)\n> summary(fit)\n\nCall:\nlm(formula = hb ~ age, data = haemoglobin)\n\nResiduals:\n     Min       1Q   Median       3Q      Max \n-2.53140 -0.73361  0.00298  0.69360  2.31079 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept)  9.70015    0.25888  37.470  < 2e-16 ***\nage          0.26302    0.04161   6.322 7.69e-09 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 1.064 on 98 degrees of freedom\nMultiple R-squared:  0.2897,\tAdjusted R-squared:  0.2824 \nF-statistic: 39.96 on 1 and 98 DF,  p-value: 7.692e-09"},"haemoglobin|loglm|0|model":{"status":"ok","text":"> fit <- lm(log(hb) ~ age, data = haemoglobin)\n> summary(fit)\n\nCall:\nlm(formula = log(hb) ~ age, data = haemoglobin)\n\nResiduals:\n      Min        1Q    Median        3Q       Max \n-0.276737 -0.061722  0.006087  0.065958  0.204284 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 2.273660   0.023502   96.74  < 2e-16 ***\nage         0.023834   0.003777    6.31 8.12e-09 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 0.09661 on 98 degrees of freedom\nMultiple R-squared:  0.2889,\tAdjusted R-squared:  0.2816 \nF-statistic: 39.81 on 1 and 98 DF,  p-value: 8.119e-09"},"haemoglobin|binomial|0|model":{"status":"error","text":"> fit <- glm(hb ~ age, family = binomial, data = haemoglobin)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"haemoglobin|poisson|0|model":{"status":"warning","text":"> fit <- glm(hb ~ age, family = poisson, data = haemoglobin)\nThere were 50 or more warnings (use warnings() to see the first 50)\n> summary(fit)\n\nCall:\nglm(formula = hb ~ age, family = poisson, data = haemoglobin)\n\nCoefficients:\n            Estimate Std. Error z value Pr(>|z|)    \n(Intercept)  2.27959    0.07462   30.55   <2e-16 ***\nage          0.02359    0.01174    2.01   0.0444 *  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 14.0482  on 99  degrees of freedom\nResidual deviance:  9.9951  on 98  degrees of freedom\nAIC: Inf\n\nNumber of Fisher Scoring iterations: 4"},"haemoglobin|quasipoisson|0|model":{"status":"ok","text":"> fit <- glm(hb ~ age, family = quasipoisson, data = haemoglobin)\n> summary(fit)\n\nCall:\nglm(formula = hb ~ age, family = quasipoisson, data = haemoglobin)\n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 2.279587   0.023784  95.844  < 2e-16 ***\nage         0.023589   0.003741   6.306 8.26e-09 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 0.1016065)\n\n    Null deviance: 14.0482  on 99  degrees of freedom\nResidual deviance:  9.9951  on 98  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 4"},"parasites|lm|0|model":{"status":"ok","text":"> fit <- lm(density ~ age, data = parasites)\n> summary(fit)\n\nCall:\nlm(formula = density ~ age, data = parasites)\n\nResiduals:\n   Min     1Q Median     3Q    Max \n-19601  -6079   -887   3269  52508 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept)  24419.0     2067.5  11.811  < 2e-16 ***\nage          -1786.9      214.9  -8.315 5.48e-14 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 11250 on 148 degrees of freedom\nMultiple R-squared:  0.3184,\tAdjusted R-squared:  0.3138 \nF-statistic: 69.15 on 1 and 148 DF,  p-value: 5.475e-14"},"parasites|loglm|0|model":{"status":"ok","text":"> fit <- lm(log(density) ~ age, data = parasites)\n> summary(fit)\n\nCall:\nlm(formula = log(density) ~ age, data = parasites)\n\nResiduals:\n    Min      1Q  Median      3Q     Max \n-2.2566 -0.6810  0.1139  0.7190  2.2605 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 10.12336    0.17597   57.53   <2e-16 ***\nage         -0.21390    0.01829  -11.70   <2e-16 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 0.9573 on 148 degrees of freedom\nMultiple R-squared:  0.4803,\tAdjusted R-squared:  0.4768 \nF-statistic: 136.8 on 1 and 148 DF,  p-value: < 2.2e-16"},"parasites|binomial|0|model":{"status":"error","text":"> fit <- glm(density ~ age, family = binomial, data = parasites)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"parasites|poisson|0|model":{"status":"ok","text":"> fit <- glm(density ~ age, family = poisson, data = parasites)\n> summary(fit)\n\nCall:\nglm(formula = density ~ age, family = poisson, data = parasites)\n\nCoefficients:\n              Estimate Std. Error z value Pr(>|z|)    \n(Intercept) 10.5461563  0.0014555  7245.5   <2e-16 ***\nage         -0.2142654  0.0002348  -912.4   <2e-16 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 1989252  on 149  degrees of freedom\nResidual deviance:  994063  on 148  degrees of freedom\nAIC: 995585\n\nNumber of Fisher Scoring iterations: 5"},"parasites|quasipoisson|0|model":{"status":"ok","text":"> fit <- glm(density ~ age, family = quasipoisson, data = parasites)\n> summary(fit)\n\nCall:\nglm(formula = density ~ age, family = quasipoisson, data = parasites)\n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 10.54616    0.12914   81.67   <2e-16 ***\nage         -0.21427    0.02084  -10.28   <2e-16 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 7871.659)\n\n    Null deviance: 1989252  on 149  degrees of freedom\nResidual deviance:  994063  on 148  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 5"},"serosurvey|lm|0|model":{"status":"ok","text":"> fit <- lm(seropos ~ age, data = serosurvey)\n> summary(fit)\n\nCall:\nlm(formula = seropos ~ age, data = serosurvey)\n\nResiduals:\n    Min      1Q  Median      3Q     Max \n-0.8906 -0.2650 -0.0244  0.2357  0.9034 \n\nCoefficients:\n             Estimate Std. Error t value Pr(>|t|)    \n(Intercept) -0.095913   0.055872  -1.717   0.0876 .  \nage          0.024062   0.001908  12.613   <2e-16 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 0.3737 on 198 degrees of freedom\nMultiple R-squared:  0.4455,\tAdjusted R-squared:  0.4427 \nF-statistic: 159.1 on 1 and 198 DF,  p-value: < 2.2e-16"},"serosurvey|loglm|0|model":{"status":"error","text":"> fit <- lm(log(seropos) ~ age, data = serosurvey)\nError in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : \n  NA/NaN/Inf in 'y'"},"serosurvey|binomial|0|model":{"status":"ok","text":"> fit <- glm(seropos ~ age, family = binomial, data = serosurvey)\n> summary(fit)\n\nCall:\nglm(formula = seropos ~ age, family = binomial, data = serosurvey)\n\nCoefficients:\n            Estimate Std. Error z value Pr(>|z|)    \n(Intercept) -3.66867    0.52691  -6.963 3.34e-12 ***\nage          0.14988    0.01995   7.513 5.78e-14 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for binomial family taken to be 1)\n\n    Null deviance: 276.76  on 199  degrees of freedom\nResidual deviance: 168.51  on 198  degrees of freedom\nAIC: 172.51\n\nNumber of Fisher Scoring iterations: 5"},"serosurvey|poisson|0|model":{"status":"ok","text":"> fit <- glm(seropos ~ age, family = poisson, data = serosurvey)\n> summary(fit)\n\nCall:\nglm(formula = seropos ~ age, family = poisson, data = serosurvey)\n\nCoefficients:\n             Estimate Std. Error z value Pr(>|z|)    \n(Intercept) -2.145658   0.290490  -7.386 1.51e-13 ***\nage          0.049431   0.007908   6.251 4.08e-10 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 135.31  on 199  degrees of freedom\nResidual deviance:  91.42  on 198  degrees of freedom\nAIC: 305.42\n\nNumber of Fisher Scoring iterations: 5"},"serosurvey|quasipoisson|0|model":{"status":"ok","text":"> fit <- glm(seropos ~ age, family = quasipoisson, data = serosurvey)\n> summary(fit)\n\nCall:\nglm(formula = seropos ~ age, family = quasipoisson, data = serosurvey)\n\nCoefficients:\n             Estimate Std. Error t value Pr(>|t|)    \n(Intercept) -2.145658   0.189022 -11.351   <2e-16 ***\nage          0.049431   0.005146   9.607   <2e-16 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 0.4234104)\n\n    Null deviance: 135.31  on 199  degrees of freedom\nResidual deviance:  91.42  on 198  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 5"},"episodes|lm|0|model":{"status":"ok","text":"> fit <- lm(episodes ~ age, data = episodes)\n> summary(fit)\n\nCall:\nlm(formula = episodes ~ age, data = episodes)\n\nResiduals:\n    Min      1Q  Median      3Q     Max \n-2.3900 -1.3900 -0.9603  0.6642 19.7292 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept)  2.50911    0.44650   5.619 9.24e-08 ***\nage         -0.11914    0.05242  -2.273   0.0245 *  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 2.701 on 148 degrees of freedom\nMultiple R-squared:  0.03373,\tAdjusted R-squared:  0.0272 \nF-statistic: 5.166 on 1 and 148 DF,  p-value: 0.02448"},"episodes|loglm|0|model":{"status":"error","text":"> fit <- lm(log(episodes) ~ age, data = episodes)\nError in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : \n  NA/NaN/Inf in 'y'"},"episodes|binomial|0|model":{"status":"error","text":"> fit <- glm(episodes ~ age, family = binomial, data = episodes)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"episodes|poisson|0|model":{"status":"ok","text":"> fit <- glm(episodes ~ age, family = poisson, data = episodes)\n> summary(fit)\n\nCall:\nglm(formula = episodes ~ age, family = poisson, data = episodes)\n\nCoefficients:\n            Estimate Std. Error z value Pr(>|z|)    \n(Intercept)  0.99700    0.11633   8.571  < 2e-16 ***\nage         -0.07563    0.01589  -4.758 1.95e-06 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 473.24  on 149  degrees of freedom\nResidual deviance: 449.67  on 148  degrees of freedom\nAIC: 674.14\n\nNumber of Fisher Scoring iterations: 6"},"episodes|quasipoisson|0|model":{"status":"ok","text":"> fit <- glm(episodes ~ age, family = quasipoisson, data = episodes)\n> summary(fit)\n\nCall:\nglm(formula = episodes ~ age, family = quasipoisson, data = episodes)\n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept)  0.99700    0.23738   4.200 4.59e-05 ***\nage         -0.07563    0.03244  -2.332   0.0211 *  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 4.164202)\n\n    Null deviance: 473.24  on 149  degrees of freedom\nResidual deviance: 449.67  on 148  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 6"},"clinic|lm|0|model":{"status":"ok","text":"> fit <- lm(episodes ~ distance, data = clinic)\n> summary(fit)\n\nCall:\nlm(formula = episodes ~ distance, data = clinic)\n\nResiduals:\n    Min      1Q  Median      3Q     Max \n-1.5336 -0.9659 -0.2471  0.7568  3.7841 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept)  1.56480    0.18937   8.263 7.39e-14 ***\ndistance    -0.05207    0.02217  -2.348   0.0202 *  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 1.221 on 148 degrees of freedom\nMultiple R-squared:  0.03592,\tAdjusted R-squared:  0.02941 \nF-statistic: 5.515 on 1 and 148 DF,  p-value: 0.02018"},"clinic|lm|1|model":{"status":"ok","text":"> fit <- lm(episodes ~ distance + offset(log(years)), data = clinic)\n> summary(fit)\n\nCall:\nlm(formula = episodes ~ distance + offset(log(years)), data = clinic)\n\nResiduals:\n    Min      1Q  Median      3Q     Max \n-1.6683 -0.8334 -0.2254  0.6118  3.9086 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept)  1.37420    0.17911   7.673 2.09e-12 ***\ndistance     0.06124    0.02097   2.920  0.00405 ** \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 1.155 on 148 degrees of freedom\nMultiple R-squared:  0.05447,\tAdjusted R-squared:  0.04808 \nF-statistic: 8.526 on 1 and 148 DF,  p-value: 0.004049"},"clinic|loglm|0|model":{"status":"error","text":"> fit <- lm(log(episodes) ~ distance, data = clinic)\nError in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : \n  NA/NaN/Inf in 'y'"},"clinic|loglm|1|model":{"status":"error","text":"> fit <- lm(log(episodes) ~ distance + offset(log(years)), data = clinic)\nError in lm.fit(x, y, offset = offset, singular.ok = singular.ok, ...) : \n  NA/NaN/Inf in 'y'"},"clinic|binomial|0|model":{"status":"error","text":"> fit <- glm(episodes ~ distance, family = binomial, data = clinic)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"clinic|binomial|1|model":{"status":"error","text":"> fit <- glm(episodes ~ distance + offset(log(years)), family = binomial, data = clinic)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"clinic|poisson|0|model":{"status":"ok","text":"> fit <- glm(episodes ~ distance, family = poisson, data = clinic)\n> summary(fit)\n\nCall:\nglm(formula = episodes ~ distance, family = poisson, data = clinic)\n\nCoefficients:\n            Estimate Std. Error z value Pr(>|z|)    \n(Intercept)  0.47534    0.13197   3.602 0.000316 ***\ndistance    -0.04464    0.01704  -2.620 0.008798 ** \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 216.04  on 149  degrees of freedom\nResidual deviance: 209.04  on 148  degrees of freedom\nAIC: 443.32\n\nNumber of Fisher Scoring iterations: 5"},"clinic|poisson|1|model":{"status":"ok","text":"> fit <- glm(episodes ~ distance + offset(log(years)), family = poisson, data = clinic)\n> summary(fit)\n\nCall:\nglm(formula = episodes ~ distance + offset(log(years)), family = poisson, \n    data = clinic)\n\nCoefficients:\n            Estimate Std. Error z value Pr(>|z|)   \n(Intercept)  0.33881    0.13607   2.490  0.01277 * \ndistance     0.05108    0.01781   2.867  0.00414 **\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 190.73  on 149  degrees of freedom\nResidual deviance: 182.74  on 148  degrees of freedom\nAIC: 417.02\n\nNumber of Fisher Scoring iterations: 5"},"clinic|quasipoisson|0|model":{"status":"ok","text":"> fit <- glm(episodes ~ distance, family = quasipoisson, data = clinic)\n> summary(fit)\n\nCall:\nglm(formula = episodes ~ distance, family = quasipoisson, data = clinic)\n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)   \n(Intercept)  0.47534    0.14831   3.205  0.00165 **\ndistance    -0.04464    0.01915  -2.331  0.02110 * \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 1.263057)\n\n    Null deviance: 216.04  on 149  degrees of freedom\nResidual deviance: 209.04  on 148  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 5"},"clinic|quasipoisson|1|model":{"status":"ok","text":"> fit <- glm(episodes ~ distance + offset(log(years)), family = quasipoisson, data = clinic)\n> summary(fit)\n\nCall:\nglm(formula = episodes ~ distance + offset(log(years)), family = quasipoisson, \n    data = clinic)\n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)   \n(Intercept)  0.33881    0.14069   2.408  0.01726 * \ndistance     0.05108    0.01842   2.773  0.00627 **\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 1.069046)\n\n    Null deviance: 190.73  on 149  degrees of freedom\nResidual deviance: 182.74  on 148  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 5"},"villages|lm|0|model":{"status":"ok","text":"> fit <- lm(hb ~ distance, data = villages)\n> summary(fit)\n\nCall:\nlm(formula = hb ~ distance, data = villages)\n\nResiduals:\n    Min      1Q  Median      3Q     Max \n-4.2351 -0.8361  0.0486  1.0038  4.5299 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 10.69215    0.16210  65.961  < 2e-16 ***\ndistance     0.14860    0.03054   4.866 1.85e-06 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 1.382 on 298 degrees of freedom\nMultiple R-squared:  0.07361,\tAdjusted R-squared:  0.0705 \nF-statistic: 23.68 on 1 and 298 DF,  p-value: 1.849e-06"},"villages|lm|0|cluster":{"status":"ok","text":"> library(sandwich)\n> library(lmtest)\n> fit <- lm(hb ~ distance, data = villages)\n> coeftest(fit, vcov = vcovCL, cluster = ~ village)\n\nt test of coefficients:\n\n             Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 10.692146   0.420754 25.4118  < 2e-16 ***\ndistance     0.148598   0.081617  1.8207  0.06966 .  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1"},"villages|loglm|0|model":{"status":"ok","text":"> fit <- lm(log(hb) ~ distance, data = villages)\n> summary(fit)\n\nCall:\nlm(formula = log(hb) ~ distance, data = villages)\n\nResiduals:\n     Min       1Q   Median       3Q      Max \n-0.45438 -0.06752  0.01243  0.09210  0.32722 \n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 2.362237   0.014852 159.056  < 2e-16 ***\ndistance    0.013245   0.002798   4.734 3.41e-06 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\nResidual standard error: 0.1267 on 298 degrees of freedom\nMultiple R-squared:  0.06994,\tAdjusted R-squared:  0.06682 \nF-statistic: 22.41 on 1 and 298 DF,  p-value: 3.41e-06"},"villages|loglm|0|cluster":{"status":"ok","text":"> library(sandwich)\n> library(lmtest)\n> fit <- lm(log(hb) ~ distance, data = villages)\n> coeftest(fit, vcov = vcovCL, cluster = ~ village)\n\nt test of coefficients:\n\n             Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 2.3622367  0.0400584 58.9698  < 2e-16 ***\ndistance    0.0132451  0.0073795  1.7948  0.07369 .  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1"},"villages|binomial|0|model":{"status":"error","text":"> fit <- glm(hb ~ distance, family = binomial, data = villages)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"villages|binomial|0|cluster":{"status":"error","text":"> library(sandwich)\n> library(lmtest)\n> fit <- glm(hb ~ distance, family = binomial, data = villages)\nError in eval(family$initialize) : y values must be 0 <= y <= 1"},"villages|poisson|0|model":{"status":"warning","text":"> fit <- glm(hb ~ distance, family = poisson, data = villages)\nThere were 50 or more warnings (use warnings() to see the first 50)\n> summary(fit)\n\nCall:\nglm(formula = hb ~ distance, family = poisson, data = villages)\n\nCoefficients:\n            Estimate Std. Error z value Pr(>|z|)    \n(Intercept) 2.371037   0.035179  67.399   <2e-16 ***\ndistance    0.013014   0.006526   1.994   0.0462 *  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for poisson family taken to be 1)\n\n    Null deviance: 55.086  on 299  degrees of freedom\nResidual deviance: 51.119  on 298  degrees of freedom\nAIC: Inf\n\nNumber of Fisher Scoring iterations: 4"},"villages|poisson|0|cluster":{"status":"warning","text":"> library(sandwich)\n> library(lmtest)\n> fit <- glm(hb ~ distance, family = poisson, data = villages)\nThere were 50 or more warnings (use warnings() to see the first 50)\n> coeftest(fit, vcov = vcovCL, cluster = ~ village)\n\nz test of coefficients:\n\n             Estimate Std. Error z value Pr(>|z|)    \n(Intercept) 2.3710367  0.0377630 62.7873  < 2e-16 ***\ndistance    0.0130138  0.0071097  1.8304  0.06719 .  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1"},"villages|quasipoisson|0|model":{"status":"ok","text":"> fit <- glm(hb ~ distance, family = quasipoisson, data = villages)\n> summary(fit)\n\nCall:\nglm(formula = hb ~ distance, family = quasipoisson, data = villages)\n\nCoefficients:\n            Estimate Std. Error t value Pr(>|t|)    \n(Intercept) 2.371037   0.014428 164.338  < 2e-16 ***\ndistance    0.013014   0.002677   4.862 1.88e-06 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n(Dispersion parameter for quasipoisson family taken to be 0.1682035)\n\n    Null deviance: 55.086  on 299  degrees of freedom\nResidual deviance: 51.119  on 298  degrees of freedom\nAIC: NA\n\nNumber of Fisher Scoring iterations: 4"},"villages|quasipoisson|0|cluster":{"status":"ok","text":"> library(sandwich)\n> library(lmtest)\n> fit <- glm(hb ~ distance, family = quasipoisson, data = villages)\n> coeftest(fit, vcov = vcovCL, cluster = ~ village)\n\nz test of coefficients:\n\n             Estimate Std. Error z value Pr(>|z|)    \n(Intercept) 2.3710367  0.0377630 62.7873  < 2e-16 ***\ndistance    0.0130138  0.0071097  1.8304  0.06719 .  \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1"}};
+  /* DATA-END */
+
+  // ---------- the six case files ----------
+  // story: what a group sees before choosing a model. Written as if the data were real (the true models are in
+  // data/make_datasets.R and are not shown).
+  function plogis(e) { return 1 / (1 + Math.exp(-e)); }
+  var CASES = {
+    haemoglobin: {
+      label: "Haemoglobin", y: "hb", x: "age", xlab: "Age (years)", ylab: "Hb (g/dL)", unit: "g/dL",
+      story: "<p><b>Haemoglobin</b> (<code>hb</code>, g/dL) from a finger-prick blood sample, taken from <b>100 children</b> aged 1 to 10 (<code>age</code>, years) at routine clinic visits.</p><p>Hb is a concentration, recorded to one decimal place. In these children it ranges from about 8 to 14 g/dL.</p><p>Question: does Hb change with age?</p>"
+    },
+    parasites: {
+      label: "Parasite density", y: "density", x: "age", xlab: "Age (years)", ylab: "Parasites per µL", unit: "parasites per µL",
+      story: "<p><b>Parasite density</b> (<code>density</code>) from the blood slides of <b>150 children with malaria</b>, aged 1 to 15 (<code>age</code>, years).</p><p>Density is the number of parasites counted per µL of blood. Every child here is infected, so it is never zero. It runs from about 200 to over 70,000, and a handful of children have far more parasites than the rest.</p><p>Question: does parasite density change with age?</p>",
+      views: [["raw", "Density"], ["log", "log(density)"]]
+    },
+    serosurvey: {
+      label: "Serosurvey", y: "seropos", x: "age", xlab: "Age (years)", ylab: "Seropositive", unit: "chance of being seropositive",
+      story: "<p>A <b>serosurvey</b> of <b>200 people</b> aged 1 to 50 (<code>age</code>, years), the same survey as in week 7.</p><p>Each person's blood was tested for antibodies to malaria. <code>seropos</code> is 1 if the test was positive and 0 if not: a yes or no for each person.</p><p>Question: does the chance of being seropositive change with age?</p>"
+    },
+    episodes: {
+      label: "Malaria episodes", y: "episodes", x: "age", xlab: "Age (years)", ylab: "Episodes in the year", unit: "episodes in a year",
+      story: "<p><b>150 children</b> aged 1 to 14 (<code>age</code>, years), each followed for <b>exactly one year</b>.</p><p><code>episodes</code> is the number of clinical malaria episodes each child had in that year: a whole number, 0 or more. Most children had none or a few, but some had many: risk varies a lot from one household to the next.</p><p>Question: does the number of episodes change with age?</p>"
+    },
+    clinic: {
+      label: "Distance to the clinic", y: "episodes", x: "distance", xlab: "Distance to the clinic (km)", ylab: "Episodes", unit: "episodes",
+      offset: "years",
+      story: "<p><b>150 children</b> living 0 to 15 km from a clinic (<code>distance</code>, km). <code>episodes</code> is the number of clinical malaria episodes recorded for each child: a whole number, 0 or more.</p><p>Children joined at different times and some stopped coming to the clinic, so each was followed for a different length of time, from 1 to 12 months. <code>years</code> is each child's follow-up in years.</p><p>Question: does the rate of malaria change with distance from the clinic?</p>",
+      views: [["raw", "Episodes"], ["rate", "Episodes per year"]]
+    },
+    villages: {
+      label: "River villages", y: "hb", x: "distance", xlab: "Distance from the river (km)", ylab: "Hb (g/dL)", unit: "g/dL",
+      cluster: "village",
+      story: "<p><b>300 children</b>: 10 from each of <b>30 villages</b> (<code>village</code>). <code>hb</code> is each child's haemoglobin (g/dL).</p><p><code>distance</code> is how far the village is from the river (km), so all 10 children in a village have the same distance. Children in the same village share the same water, mosquitoes and health care.</p><p>Question: does Hb change with distance from the river?</p>"
+    }
+  };
+  var CASE_KEYS = Object.keys(CASES);
+  var MODELS = [
+    { key: "lm", fam: "gaussian", code: function (c) { return "lm(" + c.y + " ~ " + c.x + ")"; } },
+    { key: "loglm", fam: "gaussian", log: true, code: function (c) { return "lm(log(" + c.y + ") ~ " + c.x + ")"; } },
+    { key: "binomial", fam: "binomial", code: function (c) { return "glm(" + c.y + " ~ " + c.x + ", family = binomial)"; } },
+    { key: "poisson", fam: "poisson", code: function (c) { return "glm(" + c.y + " ~ " + c.x + ", family = poisson)"; } },
+    { key: "quasipoisson", fam: "poisson", quasi: true, code: function (c) { return "glm(" + c.y + " ~ " + c.x + ", family = quasipoisson)"; } }
+  ];
+  function modelOf(k) { return MODELS.filter(function (m) { return m.key === k; })[0]; }
+
+  // fit the chosen model to a y vector; returns null where R stops with an error
+  function fitCase(c, d, m, off, y) {
+    var x = d[c.x], yy = y;
+    if (m.log) { if (y.some(function (v) { return v <= 0; })) return null; yy = y.map(Math.log); }
+    if (m.fam === "binomial" && y.some(function (v) { return v < 0 || v > 1; })) return null;
+    var o = off ? d[c.offset].map(Math.log) : null;
+    return LAB.fit(x, yy, m.fam, o, m.quasi);
+  }
+  // the model's mean of y for a linear predictor, on the scale of y
+  function meanOf(m, eta) { return m.fam === "binomial" ? plogis(eta) : (m.fam === "poisson" || m.log) ? Math.exp(eta) : eta; }
+
+  // ---------- the model's prediction ranges ----------
+  // The spread of y that the fitted model expects for one person with linear predictor eta, taking the estimates as
+  // they are (their own uncertainty is small next to the scatter at these sample sizes). For each level, [lo, hi] runs
+  // between the model's quantiles, on the scale of y, and prob is the chance the model gives that range: exactly the
+  // level when y is continuous, a little more for counts and 0/1 data, which come in whole numbers.
+  // quasipoisson only says variance = dispersion × mean, so its ranges use the negative binomial with that mean and
+  // variance (or, when the dispersion is below 1, a normal curve).
+  var LEVELS = [0.5, 0.95];
+  function predRanges(m, f, eta) {
+    var mu = meanOf(m, eta), s = Math.sqrt(f.phi);
+    if (m.fam === "gaussian") return LEVELS.map(function (L) {
+      var z = LAB.qnorm((1 + L) / 2), lo = eta - z * s, hi = eta + z * s;
+      return m.log ? { lo: Math.exp(lo), hi: Math.exp(hi), prob: L } : { lo: lo, hi: hi, prob: L };
+    });
+    if (m.quasi && f.phi <= 1) return LEVELS.map(function (L) {
+      var z = LAB.qnorm((1 + L) / 2), sd = Math.sqrt(f.phi * mu);
+      return { lo: mu - z * sd, hi: mu + z * sd, prob: L };
+    });
+    var D = countDist(m, f, mu);
+    return LEVELS.map(function (L) {
+      var lo = D.q((1 - L) / 2), hi = D.q((1 + L) / 2);
+      return { lo: lo, hi: hi, prob: D.F(hi) - D.F(lo - 1) };
+    });
+  }
+  // cumulative probabilities F(k) and quantiles q(p) for 0/1 data, Poisson, or negative binomial counts
+  function countDist(m, f, mu) {
+    if (m.fam === "binomial") return {
+      F: function (k) { return k < 0 ? 0 : k < 1 ? 1 - mu : 1; }, q: function (p) { return p <= 1 - mu ? 0 : 1; }
+    };
+    var nb = m.quasi, th = nb ? mu / (f.phi - 1) : Infinity, lp0 = nb ? th * Math.log(th / (th + mu)) : -mu;
+    if (lp0 < -700) { // too large a mean to add up term by term: a normal curve with the same mean and variance
+      var sd = Math.sqrt(nb ? mu * f.phi : mu);
+      return { F: function (k) { return k < 0 ? 0 : LAB.pnorm((k + 0.5 - mu) / sd); },
+               q: function (p) { return Math.max(0, Math.ceil(mu + LAB.qnorm(p) * sd - 0.5)); } };
+    }
+    var cum = [], pk = Math.exp(lp0), c = 0;
+    for (var k = 0; ; k++) {
+      c += pk; cum.push(c);
+      if (c >= 0.98 || k > 500000) break;
+      pk *= nb ? (k + th) / (k + 1) * mu / (th + mu) : mu / (k + 1);
+    }
+    return {
+      F: function (k) { return k < 0 ? 0 : k < cum.length ? cum[k] : 1; },
+      q: function (p) { for (var j = 0; j < cum.length; j++) if (cum[j] >= p - 1e-12) return j; return cum.length; }
+    };
+  }
+  function inside(y, r) { return y >= r.lo - 1e-9 && y <= r.hi + 1e-9; }
+  // the 50% and 95% ranges as shaded bands, from functions of x that return the two ranges on the plotted scale
+  function bands(g, fn) {
+    var c = g.c, N = 240, cols = [];
+    for (var k = 0; k <= N; k++) { var x = g.xr[0] + (g.xr[1] - g.xr[0]) * k / N; cols.push({ x: x, r: fn(x) }); }
+    clip(g); c.fillStyle = css("--hit");
+    [1, 0].forEach(function (j) {
+      c.globalAlpha = j ? 0.22 : 0.26; c.beginPath();
+      for (var k = 0; k < N; k++) {
+        var r = cols[k].r[j], x0 = g.X(cols[k].x), x1 = g.X(cols[k + 1].x);
+        if (!isFinite(r.hi)) continue;
+        var lo = isFinite(r.lo) ? g.Y(r.lo) : g.b + 10, hi = g.Y(r.hi);
+        c.rect(x0, hi, x1 - x0 + 0.5, lo - hi);
+      }
+      c.fill();
+    });
+    c.restore();
+  }
+  // the same ranges as a bar for each person, for models where they depend on more than x
+  function whiskers(g, xs, rs) {
+    var c = g.c; clip(g); c.strokeStyle = css("--hit");
+    [1, 0].forEach(function (j) {
+      c.globalAlpha = j ? 0.3 : 0.55; c.lineWidth = j ? 1.2 : 3; c.beginPath();
+      xs.forEach(function (x, i) {
+        var r = rs[i][j]; if (!isFinite(r.hi)) return;
+        c.moveTo(g.X(x), isFinite(r.lo) ? g.Y(r.lo) : g.b + 10); c.lineTo(g.X(x), g.Y(r.hi));
+      });
+      c.stroke();
+    });
+    c.restore();
+  }
+  // how many people fall inside each range, against what the model expects
+  function insideReadout(el, ys, rs) {
+    var n = 0, inn = [0, 0], ex = [0, 0];
+    ys.forEach(function (y, i) { n++; LEVELS.forEach(function (L, j) { if (inside(y, rs[i][j])) inn[j]++; ex[j] += rs[i][j].prob; }); });
+    el.innerHTML = LEVELS.map(function (L, j) {
+      return '<div class="stat"><span class="k">Inside the ' + (j ? "95%" : "middle 50%") + ' range</span><span class="v">' +
+        pct(inn[j], n) + '</span><span class="s">If the model were right: about ' + Math.round(100 * ex[j] / n) + '%</span></div>';
+    }).join("");
+  }
+  var BAND_LEGEND = '<span><span class="sw band" style="background:var(--hit);opacity:.55"></span>the model\'s middle 50% range</span>' +
+    '<span><span class="sw band" style="background:var(--hit);opacity:.28"></span>its 95% range</span>' +
+    '<span><span class="sw dot" style="background:var(--miss)"></span>outside the 95% range</span>';
+
+  // ---------- formatting ----------
+  function fmt(v, dp) { return isFinite(v) ? (v < 0 ? "−" : "") + Math.abs(v).toFixed(dp) : "—"; }
+  function sig(v, s) {
+    if (!isFinite(v)) return "—";
+    if (v === 0) return "0";
+    var a = Math.abs(v), dp = Math.max(0, s - 1 - Math.floor(Math.log10(a)));
+    if (a >= 1e5) return (v < 0 ? "−" : "") + Math.round(a).toLocaleString("en-GB");
+    return (v < 0 ? "−" : "") + a.toFixed(Math.min(dp, 6));
+  }
+  function pct(k, n) { return k + " of " + n + " (" + (100 * k / n).toFixed(1) + "%)"; }
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  // ---------- canvas ----------
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function setup(cv) {
+    var r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    var c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+    return { c: c, w: r.width, h: r.height };
+  }
+  function font(c, size, weight) { c.font = (weight || 400) + " " + size + "px " + css("--font-body"); }
+  function plot(cv, xr, yr, pad) {
+    var g = setup(cv); pad = pad || { l: 58, r: 14, t: 12, b: 40 };
+    g.l = pad.l; g.r = g.w - pad.r; g.t = pad.t; g.b = g.h - pad.b; g.xr = xr; g.yr = yr;
+    g.X = function (x) { return g.l + (x - xr[0]) / (xr[1] - xr[0]) * (g.r - g.l); };
+    g.Y = function (y) { return g.b - (y - yr[0]) / (yr[1] - yr[0]) * (g.b - g.t); };
+    return g;
+  }
+  function ticks(lo, hi, n) {
+    var span = hi - lo, step = Math.pow(10, Math.floor(Math.log10(span / n))), err = span / n / step;
+    step *= err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1;
+    var t = [], v = Math.ceil(lo / step) * step;
+    for (; v <= hi + step * 1e-9; v += step) t.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+    return t;
+  }
+  function tickFmt(v) {
+    var a = Math.abs(v);
+    if (a >= 10000) return (v < 0 ? "−" : "") + (a / 1000) + "k";
+    var s = String(+v.toPrecision(6)); return s.replace("-", "−");
+  }
+  function range(vals, pad, force) {
+    var lo = Infinity, hi = -Infinity;
+    vals.forEach(function (v) { if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } });
+    (force || []).forEach(function (v) { if (v < lo) lo = v; if (v > hi) hi = v; });
+    if (!isFinite(lo)) { lo = 0; hi = 1; }
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    var p = (hi - lo) * (pad == null ? 0.06 : pad);
+    return [lo - p, hi + p];
+  }
+  function axes(g, xlab, ylab, small) {
+    var c = g.c, fs = small ? 11 : 12;
+    c.strokeStyle = css("--line"); c.lineWidth = 1; c.fillStyle = css("--muted"); font(c, fs);
+    c.textAlign = "right"; c.textBaseline = "middle";
+    ticks(g.yr[0], g.yr[1], small ? 4 : 6).forEach(function (y) {
+      var py = Math.round(g.Y(y)) + 0.5;
+      c.beginPath(); c.moveTo(g.l, py); c.lineTo(g.r, py); c.stroke();
+      c.fillText(tickFmt(y), g.l - 6, py);
+    });
+    c.textAlign = "center"; c.textBaseline = "top";
+    ticks(g.xr[0], g.xr[1], small ? 5 : 8).forEach(function (x) { c.fillText(tickFmt(x), g.X(x), g.b + 5); });
+    c.strokeStyle = css("--muted"); c.beginPath(); c.moveTo(g.l, g.b + 0.5); c.lineTo(g.r, g.b + 0.5); c.stroke();
+    font(c, small ? 11.5 : 12.5, 600); c.fillStyle = css("--ink");
+    c.fillText(xlab, (g.l + g.r) / 2, g.b + (small ? 19 : 22));
+    c.save(); c.translate(12, (g.t + g.b) / 2); c.rotate(-Math.PI / 2); c.textBaseline = "middle"; c.fillText(ylab, 0, 0); c.restore();
+  }
+  function clip(g) { g.c.save(); g.c.beginPath(); g.c.rect(g.l, g.t, g.r - g.l, g.b - g.t); g.c.clip(); }
+  function curve(g, fn, col, width, opts) {
+    opts = opts || {};
+    var c = g.c, pen = false, N = 240;
+    clip(g); c.strokeStyle = col; c.lineWidth = width; c.lineCap = "round"; c.lineJoin = "round"; c.setLineDash(opts.dash || []);
+    c.beginPath();
+    for (var k = 0; k <= N; k++) {
+      var x = g.xr[0] + (g.xr[1] - g.xr[0]) * k / N, y = fn(x);
+      if (!isFinite(y)) { pen = false; continue; }
+      if (pen) c.lineTo(g.X(x), g.Y(y)); else { c.moveTo(g.X(x), g.Y(y)); pen = true; }
+    }
+    c.stroke(); c.restore();
+  }
+  function points(g, xs, ys, col, r, alpha) {
+    var c = g.c; clip(g); c.fillStyle = col; c.globalAlpha = alpha;
+    for (var i = 0; i < xs.length; i++) if (isFinite(ys[i])) { c.beginPath(); c.arc(g.X(xs[i]), g.Y(ys[i]), r, 0, 2 * Math.PI); c.fill(); }
+    c.restore();
+  }
+  function ticksAt(g, xs, ys, col, half, width) {
+    var c = g.c; clip(g); c.strokeStyle = col; c.lineWidth = width;
+    for (var i = 0; i < xs.length; i++) if (isFinite(ys[i])) { var X = g.X(xs[i]), Y = g.Y(ys[i]); c.beginPath(); c.moveTo(X - half, Y); c.lineTo(X + half, Y); c.stroke(); }
+    c.restore();
+  }
+  function hline(g, y, col, dash) {
+    var c = g.c; c.strokeStyle = col; c.lineWidth = 1.2; c.setLineDash(dash || []);
+    c.beginPath(); c.moveTo(g.l, g.Y(y)); c.lineTo(g.r, g.Y(y)); c.stroke(); c.setLineDash([]);
+  }
+
+  // ---------- diagnostic plots (shared by both tabs) ----------
+  var SMALL = { l: 58, r: 10, t: 10, b: 36 };
+  function drawResid(cv, xs, res, xlab) {
+    var g = plot(cv, range(xs), range(res, 0.08), SMALL);
+    axes(g, xlab, "Residuals", true);
+    hline(g, 0, css("--muted"), [4, 4]);
+    points(g, xs, res, css("--accent"), 2.6, 0.5);
+    var lw = LAB.lowess(xs, res, 2 / 3, 3);
+    clip(g); var c = g.c; c.strokeStyle = css("--miss"); c.lineWidth = 2; c.beginPath();
+    lw.x.forEach(function (x, k) { if (k) c.lineTo(g.X(x), g.Y(lw.y[k])); else c.moveTo(g.X(x), g.Y(lw.y[k])); });
+    c.stroke(); c.restore();
+  }
+  function drawQQ(cv, std) {
+    var s = std.filter(isFinite).slice().sort(function (a, b) { return a - b; }), th = LAB.ppoints(s.length).map(LAB.qnorm);
+    var g = plot(cv, range(th), range(s.concat(th), 0.08), SMALL);
+    axes(g, "Theoretical quantiles", "Std. residuals", true);
+    curve(g, function (x) { return x; }, css("--muted"), 1.2, { dash: [4, 4] });
+    points(g, th, s, css("--accent"), 2.6, 0.55);
+  }
+  function drawCook(cv, cook, drop) {
+    var n = cook.length, g = plot(cv, [0, n + 1], [0, Math.max(1e-9, Math.max.apply(null, cook.filter(isFinite))) * 1.15], SMALL), c = g.c;
+    axes(g, "Observation number", "Cook's distance", true);
+    clip(g); c.strokeStyle = css("--accent"); c.lineWidth = n > 200 ? 1 : 1.6;
+    cook.forEach(function (v, i) { if (!isFinite(v)) return; c.beginPath(); c.moveTo(g.X(i + 1), g.Y(0)); c.lineTo(g.X(i + 1), g.Y(v)); c.stroke(); });
+    c.restore();
+    // label the three largest, as R does
+    var top = cook.map(function (v, i) { return [v, i]; }).filter(function (p) { return isFinite(p[0]); }).sort(function (a, b) { return b[0] - a[0]; }).slice(0, 3);
+    font(c, 11); c.fillStyle = css("--ink"); c.textAlign = "center"; c.textBaseline = "bottom";
+    top.forEach(function (p) { c.fillText(String((drop && drop[p[1]]) || p[1] + 1), g.X(p[1] + 1), g.Y(p[0]) - 2); });
+  }
+  // residuals grouped by village: one column per village, villages in order of the predictor
+  function drawByGroup(cv, groups, res, order) {
+    var pos = {}; order.forEach(function (v, k) { pos[v] = k + 1; });
+    var xs = groups.map(function (v) { return pos[v]; }), n = order.length;
+    var g = plot(cv, [0.3, n + 0.7], range(res, 0.08), SMALL), c = g.c;
+    axes(g, "Village (in order of x)", "Residuals", true);
+    hline(g, 0, css("--muted"), [4, 4]);
+    points(g, xs, res, css("--accent"), 2.4, 0.5);
+    var sums = {}, cnt = {};
+    groups.forEach(function (v, i) { sums[v] = (sums[v] || 0) + res[i]; cnt[v] = (cnt[v] || 0) + 1; });
+    ticksAt(g, order.map(function (v) { return pos[v]; }), order.map(function (v) { return sums[v] / cnt[v]; }), css("--ink"), Math.min(9, (g.r - g.l) / n * 0.4), 2.4);
+  }
+
+  // ---------- controls ----------
+  var TABS = ["res", "clinic"], tab = "res";
+  TABS.forEach(function (t) { $("t-" + t).onclick = function () { tab = t; showTab(); }; });
+  function showTab() {
+    TABS.forEach(function (t) { $("t-" + t).setAttribute("aria-selected", t === tab); $("p-" + t).hidden = t !== tab; });
+    draw();
+  }
+  function seg(el, attr, onpick) {
+    el.querySelectorAll("button").forEach(function (b) {
+      b.onclick = function () { press(el, attr, b.getAttribute(attr)); onpick(b.getAttribute(attr)); };
+    });
+  }
+  function press(el, attr, v) { el.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x.getAttribute(attr) === v); }); }
+
+  // ---------- B: model clinic ----------
+  var CL = { c: "haemoglobin", m: "lm", off: false, se: "model", view: "raw", avg: false, pi: false, col: null, px: {} };
+  var PX_DEFAULT = { haemoglobin: 10, parasites: 15, serosurvey: 50, episodes: 14, clinic: 15, villages: 10 };
+  $("c-case").innerHTML = CASE_KEYS.map(function (k) { return '<button data-v="' + k + '">' + CASES[k].label + '</button>'; }).join("");
+  seg($("c-case"), "data-v", function (k) { CL.c = k; CL.off = false; CL.se = "model"; CL.view = "raw"; CL.col = null; CL.avg = false; setupCase(); });
+  $("c-off").onchange = function () { CL.off = this.checked; changed(); };
+  seg($("c-se"), "data-v", function (v) { CL.se = v; changed(); });
+  $("c-avg").onchange = function () { CL.avg = this.checked; drawClinic(); };
+  $("c-px").addEventListener("input", function () { var v = parseFloat(this.value); if (isFinite(v)) { CL.px[CL.c] = v; drawPred(); } });
+  $("c-pi").onchange = function () { CL.pi = this.checked; drawClinic(); };
+  function setupCase() {
+    var c = CASES[CL.c];
+    press($("c-case"), "data-v", CL.c);
+    $("c-story").innerHTML = c.story;
+    $("c-model").innerHTML = MODELS.map(function (m) { return '<button data-v="' + m.key + '">' + esc(m.code(c)) + '</button>'; }).join("");
+    seg($("c-model"), "data-v", function (k) { CL.m = k; changed(); });
+    press($("c-model"), "data-v", CL.m);
+    $("c-off-wrap").hidden = !c.offset; $("c-off").checked = CL.off;
+    $("c-off-code").textContent = c.offset ? "+ offset(log(" + c.offset + "))" : "";
+    $("c-se-wrap").hidden = !c.cluster; press($("c-se"), "data-v", CL.se);
+    $("c-avg-wrap").hidden = !c.cluster; $("c-avg").checked = CL.avg;
+    $("c-view-wrap").hidden = !c.views;
+    if (c.views) {
+      $("c-view").innerHTML = c.views.map(function (v) { return '<button data-v="' + v[0] + '">' + v[1] + '</button>'; }).join("");
+      seg($("c-view"), "data-v", function (v) { CL.view = v; drawClinic(); });
+      press($("c-view"), "data-v", CL.view);
+    }
+    var cols = [[c.x, c.x]]; if (c.offset) cols.push([c.offset, c.offset]); if (c.cluster) cols.push([c.cluster, c.cluster]);
+    if (!CL.col) CL.col = c.x;
+    $("c-d4-col").innerHTML = cols.map(function (v) { return '<button data-v="' + v[0] + '">' + v[1] + '</button>'; }).join("");
+    seg($("c-d4-col"), "data-v", function (v) { CL.col = v; drawClinic(); });
+    press($("c-d4-col"), "data-v", CL.col);
+    $("c-px-lab").textContent = "Model's prediction at " + c.x + " =";
+    if (CL.px[CL.c] === undefined) CL.px[CL.c] = PX_DEFAULT[CL.c];
+    $("c-px").value = CL.px[CL.c];
+    changed();
+  }
+  function key() { var c = CASES[CL.c]; return [CL.c, CL.m, c.offset && CL.off ? 1 : 0, c.cluster ? CL.se : "model"].join("|"); }
+  function changed() { drawClinic(); }
+
+  function current() {
+    var c = CASES[CL.c], d = DATA[CL.c], m = modelOf(CL.m), ro = ROUT[key()];
+    var off = !!(c.offset && CL.off), f = ro.status === "error" ? null : fitCase(c, d, m, off, d[c.y]);
+    return { c: c, d: d, m: m, ro: ro, off: off, f: f };
+  }
+  // y on the scale being plotted, for person i (or with no person, for a curve)
+  function toView(c, v, i) {
+    if (CL.view === "log") return v > 0 ? Math.log(v) : NaN;
+    if (CL.view === "rate") return v / DATA[CL.c][c.offset][i];
+    return v;
+  }
+  function drawClinic() {
+    if (tab !== "clinic") return;
+    var s = current(), c = s.c, d = s.d, m = s.m, f = s.f, xs = d[c.x], n = xs.length, i;
+    var yl = CL.view === "log" ? "log(" + c.y + ")" : CL.view === "rate" ? "Episodes per year of follow-up" : c.ylab;
+    $("c-title").textContent = (CL.view === "log" ? "log(" + c.y + ")" : CL.view === "rate" ? "episodes / years" : c.y) + " against " + c.x;
+    var ys = d[c.y].map(function (v, k) { return toView(c, v, k); });
+    // the fitted model: one value per person, and a curve when the fit depends on x alone on this scale
+    var fitPts = null, fitFn = null;
+    if (f) {
+      fitPts = []; for (i = 0; i < n; i++) fitPts.push(toView(c, meanOf(m, f.eta[i]), i));
+      var curveOK = CL.view === "rate" ? (s.off && m.key !== "lm") : !s.off;
+      if (curveOK) fitFn = function (x) { var v = meanOf(m, f.b[0] + f.b[1] * x); return CL.view === "log" ? (v > 0 ? Math.log(v) : NaN) : v; };
+    }
+    var xr = range(xs, 0.04), vals = ys.slice(), K = 60;
+    if (fitPts) vals = vals.concat(fitPts);
+    for (var k = 0; k <= K; k++) {
+      var xx = xr[0] + (xr[1] - xr[0]) * k / K;
+      if (fitFn) vals.push(fitFn(xx));
+    }
+    // the model's ranges for each person on the scale of y (to count who falls inside), and on the plotted scale
+    var showPI = CL.pi && f, rs = null, rsView = null, bandFn = null;
+    if (showPI) {
+      rs = []; for (i = 0; i < n; i++) rs.push(predRanges(m, f, f.eta[i]));
+      rsView = rs.map(function (rr, k) { return rr.map(function (r) { return { lo: toView(c, r.lo, k), hi: toView(c, r.hi, k) }; }); });
+      if (!s.off && CL.view !== "rate") bandFn = function (x) {
+        return predRanges(m, f, f.b[0] + f.b[1] * x).map(function (r) { return { lo: toView(c, r.lo), hi: toView(c, r.hi) }; });
+      };
+      if (bandFn) for (k = 0; k <= K; k++) bandFn(xr[0] + (xr[1] - xr[0]) * k / K).forEach(function (r) { vals.push(r.lo, r.hi); });
+      else rsView.forEach(function (rr) { rr.forEach(function (r) { vals.push(r.lo, r.hi); }); });
+    }
+    var g = plot($("c-cv"), xr, range(vals, 0.05));
+    axes(g, c.xlab, yl);
+    if (showPI) { if (bandFn) bands(g, bandFn); else whiskers(g, xs, rsView); }
+    points(g, xs, ys, css("--accent"), 3.6, c.y === "seropos" ? 0.18 : 0.45);
+    if (showPI) {
+      var out = xs.map(function (x, k) { return inside(d[c.y][k], rs[k][1]) ? NaN : ys[k]; });
+      points(g, xs, out, css("--miss"), 3.6, 0.9);
+    }
+    if (CL.avg && c.cluster) {
+      var su = {}, cn = {}, dx = {};
+      d[c.cluster].forEach(function (v, k) { su[v] = (su[v] || 0) + ys[k]; cn[v] = (cn[v] || 0) + 1; dx[v] = xs[k]; });
+      var cc = g.c; clip(g); cc.fillStyle = css("--ink");
+      Object.keys(su).forEach(function (v) { var X = g.X(dx[v]), Y = g.Y(su[v] / cn[v]); cc.beginPath(); cc.moveTo(X, Y - 6); cc.lineTo(X + 6, Y); cc.lineTo(X, Y + 6); cc.lineTo(X - 6, Y); cc.closePath(); cc.fill(); });
+      cc.restore();
+    }
+    if (fitFn) curve(g, fitFn, css("--hit"), 3);
+    else if (fitPts) ticksAt(g, xs, fitPts, css("--hit"), 5, 2.4);
+    var lg = '<span><span class="sw dot" style="background:var(--accent);opacity:.6"></span>' + (c.y === "seropos" ? "a person (darker = more people)" : "a person") + '</span>';
+    if (f) lg += '<span><span class="sw ln" style="background:var(--hit)"></span>the fitted model' + (fitFn ? "" : ", for each person") + '</span>';
+    if (CL.avg && c.cluster) lg += '<span><span class="sw dia" style="background:var(--ink)"></span>a village average</span>';
+    if (showPI) lg += BAND_LEGEND;
+    $("c-legend").innerHTML = lg;
+    $("c-inside").hidden = !showPI;
+    if (showPI) insideReadout($("c-inside"), d[c.y], rs);
+
+    // R console
+    var ro = s.ro;
+    $("c-status").className = "status " + ro.status;
+    $("c-status").textContent = ro.status === "error" ? "R stopped with an error" : ro.status === "warning" ? "R ran, with warnings" : "R ran without complaint";
+    $("c-rout").innerHTML = ro.text.split("\n").map(function (l) {
+      var e = esc(l);
+      if (/^&gt; /.test(e)) return '<span class="cmd">' + e + '</span>';
+      if (/^(Error|  )/.test(l) && ro.status === "error") return '<span class="err">' + e + '</span>';
+      if (/^(Warning|There were|In |\d+: In )/.test(l)) return '<span class="wrn">' + e + '</span>';
+      return e;
+    }).join("\n");
+
+    // diagnostics
+    $("c-diag").hidden = !f; $("c-diag-none").hidden = !!f;
+    $("c-diag-note").textContent = f ? (m.fam === "gaussian" ? "The plots R draws with plot(fit), and the residuals against any column." :
+      "The plots R draws with plot(fit), and the residuals against any column. For glm(), the residuals are deviance residuals and the predicted values are on the " +
+      (m.fam === "binomial" ? "log-odds" : "log") + " scale.") : "";
+    if (f) {
+      var dg = LAB.diagnostics(f);
+      $("c-d1-t").textContent = m.fam === "gaussian" ? "Residuals vs fitted" : "Residuals vs predicted";
+      drawResid($("c-d1"), dg.fitted, dg.res, m.fam === "gaussian" ? "Fitted values" : "Predicted values");
+      drawQQ($("c-d2"), dg.std);
+      drawCook($("c-d3"), dg.cook);
+      if (CL.col === c.cluster) {
+        var order = [], seen = {};
+        d[c.cluster].map(function (v, k) { return [v, xs[k]]; }).sort(function (a, b) { return a[1] - b[1] || a[0] - b[0]; })
+          .forEach(function (p) { if (!seen[p[0]]) { seen[p[0]] = 1; order.push(p[0]); } });
+        drawByGroup($("c-d4"), d[c.cluster], dg.res, order);
+      } else drawResid($("c-d4"), d[CL.col], dg.res, CL.col);
+    }
+    drawPred(s);
+  }
+  function drawPred(s) {
+    s = s || current();
+    var c = s.c, f = s.f, x = CL.px[CL.c];
+    $("c-readout").hidden = !f;
+    if (!f) return;
+    var v = meanOf(s.m, f.b[0] + f.b[1] * x), note = "";
+    if (s.m.log) note = "exp() of the predicted log(" + c.y + ")";
+    if (s.off) note = "for a child followed for one year";
+    $("c-pk").textContent = "Predicted " + c.y + " at " + c.x + " = " + x;
+    $("c-pv").textContent = sig(v, 3) + (c.y === "seropos" ? "" : " " + c.unit);
+    $("c-ps").textContent = note;
+  }
+
+  // ---------- A: exploring residual plots ----------
+  var PROBS = [
+    { key: "curve", label: "Curved trend" },
+    { key: "fan", label: "Spread grows with x" },
+    { key: "skew", label: "Skewed scatter" },
+    { key: "out", label: "One outlier" },
+    { key: "vil", label: "Village effects (clustering)" }
+  ];
+  var RP = { n: 100, k: { curve: 0, fan: 0, skew: 0, out: 0, vil: 0 }, se: "model", drop: false, pi: false, sample: 1 };
+  $("r-probs").innerHTML = PROBS.map(function (p) {
+    return '<div class="field"><label for="r-' + p.key + '">' + p.label + '<span class="val" id="r-' + p.key + '-v"></span></label>' +
+      '<input type="range" id="r-' + p.key + '" min="0" max="100" step="5" value="0"></div>';
+  }).join("");
+  PROBS.forEach(function (p) {
+    $("r-" + p.key).addEventListener("input", function () { RP.k[p.key] = this.value / 100; drawRes(); });
+  });
+  seg($("r-n"), "data-v", function (v) { RP.n = +v; drawRes(); });
+  press($("r-n"), "data-v", String(RP.n));
+  seg($("r-se"), "data-v", function (v) { RP.se = v; drawRes(); });
+  $("r-drop").onchange = function () { RP.drop = this.checked; drawRes(); };
+  $("r-new").onclick = function () { RP.sample++; drawRes(); };
+  $("r-pi").onchange = function () { RP.pi = this.checked; drawRes(); };
+
+  // the design (x and village) is fixed for each study size; only y changes between samples
+  var DESIGNS = {};
+  function design(n) {
+    if (DESIGNS[n]) return DESIGNS[n];
+    var r = LAB.rng(4000 + n), V = n / 10, x = [], v = [], gap = 10 / V;
+    for (var j = 0; j < V; j++) for (var k = 0; k < 10; k++) { x.push((j + 0.5) * gap + (r() - 0.5) * 0.6 * gap); v.push(j + 1); }
+    var imax = 0; x.forEach(function (xx, i) { if (xx > x[imax]) imax = i; });
+    return (DESIGNS[n] = { n: n, V: V, x: x, v: v, imax: imax });
+  }
+  function trueMean(x, k) { return 2 + 0.5 * x + k.curve * 0.15 * ((x - 5) * (x - 5) - 25 / 3); }
+  function simulate(D, k, seed) {
+    var r = LAB.rng(seed), u = [], y = [];
+    for (var j = 0; j < D.V; j++) u.push(LAB.rnorm(r));
+    for (var i = 0; i < D.n; i++) {
+      var z1 = LAB.rnorm(r), z2 = LAB.rnorm(r), sd = 1 + k.fan * (2.5 * D.x[i] / 10 - 0.8);
+      var e = sd * (Math.sqrt(1 - k.skew) * z1 + Math.sqrt(k.skew) * (z2 * z2 - 1) / Math.SQRT2);
+      y.push(trueMean(D.x[i], k) + 1.5 * k.vil * u[D.v[i] - 1] + e + (i === D.imax ? 12 * k.out : 0));
+    }
+    return y;
+  }
+  // fit lm(y ~ x), leaving out the point with the largest Cook's distance if asked
+  function fitB(D, y) {
+    var f = LAB.fit(D.x, y, "gaussian", null, false), keep = null;
+    if (RP.drop) {
+      var ck = LAB.diagnostics(f).cook, worst = 0;
+      ck.forEach(function (v, i) { if (v > ck[worst]) worst = i; });
+      keep = []; for (var i = 0; i < D.n; i++) if (i !== worst) keep.push(i);
+      f = LAB.fit(keep.map(function (i) { return D.x[i]; }), keep.map(function (i) { return y[i]; }), "gaussian", null, false);
+      f.dropped = worst;
+    }
+    var q = LAB.coefs(f, RP.se === "cluster" ? (keep ? keep.map(function (i) { return D.v[i]; }) : D.v) : null);
+    return { f: f, q: q, keep: keep };
+  }
+  function drawRes() {
+    if (tab !== "res") return;
+    PROBS.forEach(function (p) { $("r-" + p.key + "-v").textContent = Math.round(RP.k[p.key] * 100) + "%"; });
+    press($("r-se"), "data-v", RP.se);
+    $("r-sample").textContent = "Sample " + RP.sample;
+    var D = design(RP.n), y = simulate(D, RP.k, 900000 + RP.n * 1000 + RP.sample), F = fitB(D, y), f = F.f, q = F.q;
+    var xr = [-0.3, 10.3], vals = y.slice(), LM = { fam: "gaussian" };
+    var bandFn = function (x) { return predRanges(LM, f, f.b[0] + f.b[1] * x); };
+    for (var k = 0; k <= 50; k++) {
+      if (RP.pi) bandFn(10 * k / 50).forEach(function (r) { vals.push(r.lo, r.hi); });
+    }
+    var g = plot($("r-cv"), xr, range(vals, 0.05));
+    axes(g, "x", "y");
+    if (RP.pi) bands(g, bandFn);
+    points(g, D.x, y, css("--accent"), 3.4, 0.5);
+    // who falls inside the ranges: only the people the line was fitted to
+    var used = F.keep || D.x.map(function (_, i) { return i; }), rs = used.map(function (i) { return bandFn(D.x[i]); });
+    if (RP.pi) points(g, used.map(function (i) { return D.x[i]; }), used.map(function (i, k) { return inside(y[i], rs[k][1]) ? NaN : y[i]; }), css("--miss"), 3.4, 0.9);
+    if (F.keep) {
+      var c = g.c, i = f.dropped; c.strokeStyle = css("--miss"); c.lineWidth = 2;
+      c.beginPath(); c.arc(g.X(D.x[i]), g.Y(y[i]), 6.5, 0, 2 * Math.PI); c.stroke();
+    }
+    curve(g, function (x) { return f.b[0] + f.b[1] * x; }, css("--hit"), 3);
+    $("r-legend").innerHTML = '<span><span class="sw dot" style="background:var(--accent);opacity:.6"></span>a person</span>' +
+      '<span><span class="sw ln" style="background:var(--hit)"></span>the fitted line</span>' +
+      (F.keep ? '<span><span class="sw ring" style="border-color:var(--miss)"></span>left out</span>' : '') +
+      (RP.pi ? BAND_LEGEND : '');
+    $("r-inside").hidden = !RP.pi;
+    if (RP.pi) insideReadout($("r-inside"), used.map(function (i) { return y[i]; }), rs);
+    $("r-est").textContent = fmt(q.est[1], 3);
+    $("r-se-v").textContent = fmt(q.se[1], 3);
+    $("r-ci").textContent = fmt(q.lo, 2) + " to " + fmt(q.hi, 2);
+
+    var dg = LAB.diagnostics(f);
+    var vs = F.keep ? F.keep.map(function (i) { return D.v[i]; }) : D.v;
+    drawResid($("r-d1"), dg.fitted, dg.res, "Fitted values");
+    drawQQ($("r-d2"), dg.std);
+    drawCook($("r-d3"), dg.cook, F.keep ? F.keep.map(function (i) { return i + 1; }) : null);
+    var order = []; for (var j = 1; j <= D.V; j++) order.push(j);
+    drawByGroup($("r-d4"), vs, dg.res, order);
+  }
+  function draw() { drawClinic(); drawRes(); }
+  var rt;
+  window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(draw, 60); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  setupCase();
+  showTab();
+})();
+</script>
+</body>
+</html>
